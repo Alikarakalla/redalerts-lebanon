@@ -1021,7 +1021,7 @@ function App() {
           </div>
         </header>
 
-        <main className="relative flex-1">
+        <main className="relative flex-1 flex flex-col min-h-0">
           <div className="mb-3 hidden flex-col gap-2 md:mb-4 md:flex">
             <div className="flex items-center gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {FILTER_TYPES.map((type) => {

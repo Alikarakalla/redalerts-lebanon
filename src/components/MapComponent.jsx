@@ -308,7 +308,7 @@ export default function MapComponent({
   }, [events, activeType, activeWindow]);
 
   return (
-    <div className="relative h-full w-full bg-[#0a0a0a] overflow-hidden">
+    <div className="relative flex-1 w-full bg-[#0a0a0a] overflow-hidden min-h-[400px]">
       {/* Map Container */}
       <div className="absolute inset-0 leaflet-dark-wrapper" dir="ltr">
         <MapContainer
@@ -316,7 +316,7 @@ export default function MapComponent({
           zoom={DEFAULT_ZOOM}
           zoomControl={false}
           className="h-full w-full"
-          maxBounds={[[32.5, 34.5], [35.0, 37.0]]}
+          style={{ height: '100%', width: '100%' }}
           minZoom={7}
         >
           <TileLayer

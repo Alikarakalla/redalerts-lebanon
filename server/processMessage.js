@@ -1,6 +1,10 @@
 import crypto from 'node:crypto';
 import { buildFingerprint } from './dedupe.js';
-import { estimateCoordinates, isKnownLebanonLocation } from './coordinates.js';
+import {
+  extractKnownLocationFromText,
+  extractKnownLocationsFromText,
+  resolveCoordinates,
+} from './coordinates.js';
 
 const ARABIC = {
   explosion: '\u062a\u0641\u062c\u064a\u0631',
@@ -10,6 +14,7 @@ const ARABIC = {
   targeting: '\u0627\u0633\u062a\u0647\u062f\u0627\u0641',
   drone: '\u0645\u0633\u064a\u0631\u0629',
   missileFall: '\u0633\u0642\u0648\u0637 \u0635\u0627\u0631\u0648\u062e',
+  warplane: '\u0645\u0642\u0627\u062a\u0644\u0627\u062a_\u062d\u0631\u0628\u064a\u0629',
 };
 
 const LOCATION_PREFIXES = [
@@ -53,6 +58,12 @@ function includesArabic(text, token) {
 function inferType(text) {
   const normalized = text.toLowerCase();
 
+  if (text.includes('#\u0645\u0642\u0627\u062a\u0644\u0627\u062a_\u062d\u0631\u0628\u064a\u0629')) {
+    return 'warplane';
+  }
+  if (text.includes('#\u0645\u0633\u064a\u0631')) {
+    return 'drone';
+  }
   if (includesArabic(text, ARABIC.explosion) || includesArabic(text, ARABIC.blast)) {
     return 'explosion';
   }
@@ -82,6 +93,13 @@ function inferType(text) {
 function severityFromText(text) {
   const normalized = text.toLowerCase();
 
+  if (text.includes('#\u0645\u0642\u0627\u062a\u0644\u0627\u062a_\u062d\u0631\u0628\u064a\u0629')) {
+    return 'high';
+  }
+  if (text.includes('#\u0645\u0633\u064a\u0631')) {
+    return 'medium';
+  }
+
   if (
     includesArabic(text, ARABIC.raid) ||
     includesArabic(text, ARABIC.targeting) ||
@@ -106,6 +124,8 @@ function severityFromText(text) {
 
 function isConflictEvent(text) {
   return (
+    text.includes('#\u0645\u0633\u064a\u0631') ||
+    text.includes('#\u0645\u0642\u0627\u062a\u0644\u0627\u062a_\u062d\u0631\u0628\u064a\u0629') ||
     includesArabic(text, ARABIC.explosion) ||
     includesArabic(text, ARABIC.blast) ||
     includesArabic(text, ARABIC.shelling) ||
@@ -170,6 +190,11 @@ function extractArabicLocation(text) {
 }
 
 function extractLocation(text) {
+  const knownLocation = extractKnownLocationFromText(text);
+  if (knownLocation) {
+    return knownLocation;
+  }
+
   const arabicLocation = extractArabicLocation(text);
   if (arabicLocation) {
     return arabicLocation;
@@ -182,28 +207,97 @@ function extractLocation(text) {
   return englishLocationMatch ? englishLocationMatch[0] : 'Lebanon';
 }
 
-function buildTelegramAlert(text, sourceChannel) {
-  const location = extractLocation(text);
-  const coords = estimateCoordinates(location);
+function isRedLinkChannel(sourceChannel) {
+  return typeof sourceChannel === 'string' && sourceChannel.toLowerCase().includes('redlinkleb');
+}
+
+function normalizeHashtagValue(value) {
+  return value
+    .replace(/^#+/u, '')
+    .replace(/_/gu, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+function extractHashtagLocations(text) {
+  const matches = text.match(/#[^\s#]+/gu) ?? [];
+  const blockedTags = new Set([
+    '\u0645\u0633\u064a\u0631',
+    '\u0645\u0642\u0627\u062a\u0644\u0627\u062a \u062d\u0631\u0628\u064a\u0629',
+    '\u0627\u0644\u062c\u0646\u0648\u0628',
+    '\u062d\u0644\u0642',
+    '\u062d\u0644\u0642 \u0648\u062d\u0630\u0631',
+    '\u062d\u064a\u0637\u0629 \u0648\u062d\u0630\u0631',
+  ]);
+
+  return matches
+    .map(normalizeHashtagValue)
+    .filter((tag) => tag && !blockedTags.has(tag))
+    .filter((tag, index, all) => all.indexOf(tag) === index);
+}
+
+async function buildAlertForLocation(text, sourceChannel, location, forcedType) {
+  const coords = await resolveCoordinates(location);
   const severity = severityFromText(text);
+  const type = forcedType ?? inferType(text);
+
+  return {
+    id: crypto.randomUUID(),
+    type,
+    lat: coords.lat,
+    lng: coords.lng,
+    timestamp: new Date().toISOString(),
+    locationName: location,
+    description: text.slice(0, 320),
+    verified: false,
+    severity,
+    sourceChannel,
+    resolvedLocation: coords.resolved,
+    locationSource: coords.source,
+    reliabilityScore: 1,
+    alertLevel: severity === 'high' ? 'red' : severity === 'medium' ? 'orange' : 'yellow',
+    sourceFingerprint: buildFingerprint({ sourceChannel, text, location, type }),
+  };
+}
+
+async function buildRedLinkAlerts(text, sourceChannel) {
+  const forcedType = text.includes('#\u0645\u0642\u0627\u062a\u0644\u0627\u062a_\u062d\u0631\u0628\u064a\u0629')
+    ? 'warplane'
+    : text.includes('#\u0645\u0633\u064a\u0631')
+      ? 'drone'
+      : inferType(text);
+
+  const hashtagLocations = extractHashtagLocations(text);
+  const knownLocations = extractKnownLocationsFromText(text);
+  const locations = [...new Set([...hashtagLocations, ...knownLocations])];
+
+  if (locations.length === 0) {
+    const fallbackLocation = extractLocation(text);
+    if (fallbackLocation && fallbackLocation !== 'Lebanon') {
+      locations.push(fallbackLocation);
+    }
+  }
+
+  const alerts = [];
+  for (const location of locations) {
+    alerts.push(await buildAlertForLocation(text, sourceChannel, location, forcedType));
+  }
+  return alerts;
+}
+
+async function buildTelegramAlert(text, sourceChannel) {
+  const location = extractLocation(text);
+  const alerts = [];
+
+  if (isRedLinkChannel(sourceChannel)) {
+    alerts.push(...(await buildRedLinkAlerts(text, sourceChannel)));
+  } else {
+    alerts.push(await buildAlertForLocation(text, sourceChannel, location));
+  }
 
   return {
     isConflictEvent: isConflictEvent(text),
-    alert: {
-      id: crypto.randomUUID(),
-      type: inferType(text),
-      lat: coords.lat,
-      lng: coords.lng,
-      timestamp: new Date().toISOString(),
-      locationName: location,
-      description: text.slice(0, 320),
-      verified: false,
-      severity,
-      sourceChannel,
-      reliabilityScore: 1,
-      alertLevel: severity === 'high' ? 'red' : severity === 'medium' ? 'orange' : 'yellow',
-      sourceFingerprint: buildFingerprint({ sourceChannel, text, location }),
-    },
+    alerts,
   };
 }
 
@@ -211,22 +305,24 @@ export async function processMessage(text, sourceChannel) {
   return buildTelegramAlert(text, sourceChannel);
 }
 
-export function isMappableAlert(processed) {
-  if (!processed?.isConflictEvent) {
-    return false;
+export function getMappableAlerts(processed) {
+  if (!processed?.isConflictEvent || !Array.isArray(processed.alerts)) {
+    return [];
   }
 
-  if (!processed.alert || processed.alert.type === 'update') {
-    return false;
-  }
+  return processed.alerts.filter((alert) => {
+    if (!alert || alert.type === 'update') {
+      return false;
+    }
 
-  if (!processed.alert.locationName || processed.alert.locationName === 'Lebanon') {
-    return false;
-  }
+    if (!alert.locationName || alert.locationName === 'Lebanon') {
+      return false;
+    }
 
-  if (!isKnownLebanonLocation(processed.alert.locationName)) {
-    return false;
-  }
+    if (!alert.resolvedLocation) {
+      return false;
+    }
 
-  return true;
+    return true;
+  });
 }

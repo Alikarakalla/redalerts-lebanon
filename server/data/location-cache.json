@@ -1,0 +1,667 @@
+{
+  "باكستان": {
+    "lat": 33.8732538,
+    "lng": 35.4876671,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "باكستان"
+  },
+  "lebanon": {
+    "lat": 33.8750629,
+    "lng": 35.843409,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "Lebanon"
+  },
+  "سفينة": {
+    "lat": 34.4566153,
+    "lng": 36.0247774,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "سفينة"
+  },
+  "جنوب لبنان في": {
+    "lat": 33.2536284,
+    "lng": 35.5117112,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "جنوب لبنان في"
+  },
+  "كفرا": {
+    "lat": 33.1805341,
+    "lng": 35.3540027,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "كفرا"
+  },
+  "ياطر": {
+    "lat": 33.147936,
+    "lng": 35.3262299,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "ياطر"
+  },
+  "فرون": {
+    "lat": 33.29684,
+    "lng": 35.426489,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "فرون"
+  },
+  "الغندورية": {
+    "lat": 33.2779918,
+    "lng": 35.4372145,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "الغندورية"
+  },
+  "القنطرة": {
+    "lat": 33.2735338,
+    "lng": 35.4590963,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "القنطرة"
+  },
+  "عزة": {
+    "lat": 33.4552818,
+    "lng": 35.4300177,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "عزة"
+  },
+  "حميلة": {
+    "lat": 33.4457079,
+    "lng": 35.4665709,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "حميلة"
+  },
+  "الخرايب": {
+    "lat": 33.3450354,
+    "lng": 35.2997831,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "الخرايب"
+  },
+  "عدلون": {
+    "lat": 33.3982861,
+    "lng": 35.2659014,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "عدلون"
+  },
+  "ريحان": {
+    "lat": 33.4389263,
+    "lng": 35.5632591,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "ريحان"
+  },
+  "عرب صاليم": {
+    "lat": 33.423802,
+    "lng": 35.5078195,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "عرب صاليم"
+  },
+  "جباع": {
+    "lat": 33.4902472,
+    "lng": 35.5218713,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "جباع"
+  },
+  "كفر ملكي": {
+    "lat": 33.5019243,
+    "lng": 35.4785343,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "كفر ملكي"
+  },
+  "بصليا": {
+    "lat": 33.5009749,
+    "lng": 35.5129044,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "بصليا"
+  },
+  "سجد": {
+    "lat": 33.4322905,
+    "lng": 35.535542,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "سجد"
+  },
+  "الحمادية": {
+    "lat": 33.2882342,
+    "lng": 35.2427556,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "الحمادية"
+  },
+  "شبريحا": {
+    "lat": 33.2921017,
+    "lng": 35.2319902,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "شبريحا"
+  },
+  "البص": {
+    "lat": 33.2723298,
+    "lng": 35.2126465,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "البص"
+  },
+  "زوطر الشرقية": {
+    "lat": 33.319699,
+    "lng": 35.473434,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "زوطر الشرقية"
+  },
+  "مروانية": {
+    "lat": 33.4522428,
+    "lng": 35.3792596,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "مروانية"
+  },
+  "العدوسية": {
+    "lat": 33.4691968,
+    "lng": 35.3456888,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "العدوسية"
+  },
+  "قناريت": {
+    "lat": 33.5025627,
+    "lng": 35.3827943,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "قناريت"
+  },
+  "الغازية": {
+    "lat": 33.5193876,
+    "lng": 35.372579,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "الغازية"
+  },
+  "علمان": {
+    "lat": 33.5916539,
+    "lng": 35.4117378,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "علمان"
+  },
+  "القصير": {
+    "lat": 34.6080088,
+    "lng": 36.2379767,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "القصير"
+  },
+  "برج الشمالي": {
+    "lat": 33.2609705,
+    "lng": 35.2309239,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "برج الشمالي"
+  },
+  "عين بعال": {
+    "lat": 33.2329637,
+    "lng": 35.2663966,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "عين بعال"
+  },
+  "قاسمية": {
+    "lat": 33.3278756,
+    "lng": 35.2522617,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "قاسمية"
+  },
+  "معركة": {
+    "lat": 33.272278,
+    "lng": 35.3094196,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "معركة"
+  },
+  "إركي": {
+    "lat": 33.4603412,
+    "lng": 35.4150377,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "إركي"
+  },
+  "رومين": {
+    "lat": 33.4623082,
+    "lng": 35.4426241,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "رومين"
+  },
+  "قناة": {
+    "lat": 34.2529047,
+    "lng": 35.8954383,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "قناة"
+  },
+  "أنصار": {
+    "lat": 33.3795518,
+    "lng": 35.3552671,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "أنصار"
+  },
+  "كفر فيلا": {
+    "lat": 33.4818997,
+    "lng": 35.4983616,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "كفر فيلا"
+  },
+  "حومين التحتا": {
+    "lat": 33.4784432,
+    "lng": 35.4338941,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "حومين التحتا"
+  },
+  "ارزي": {
+    "lat": 33.333228,
+    "lng": 35.2986288,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "ارزي"
+  },
+  "زفتا": {
+    "lat": 33.4434411,
+    "lng": 35.3994963,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "زفتا"
+  },
+  "حومين الفوقا": {
+    "lat": 33.4453543,
+    "lng": 35.4873579,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "حومين الفوقا"
+  },
+  "جرجوع": {
+    "lat": 33.448398,
+    "lng": 35.5207573,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "جرجوع"
+  },
+  "باتوليه": {
+    "lat": 33.2250197,
+    "lng": 35.2573463,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "باتوليه"
+  },
+  "العيشية": {
+    "lat": 33.4074135,
+    "lng": 35.5564358,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "العيشية"
+  },
+  "جرمق": {
+    "lat": 33.3883164,
+    "lng": 35.5402846,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "جرمق"
+  },
+  "محمودية": {
+    "lat": 33.3863433,
+    "lng": 35.5555958,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "محمودية"
+  },
+  "كفر رمان": {
+    "lat": 33.3989516,
+    "lng": 35.5168527,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "كفر رمان"
+  },
+  "علي الطاهر": {
+    "lat": 33.3657382,
+    "lng": 35.5168165,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "علي الطاهر"
+  },
+  "تول": {
+    "lat": 33.390511,
+    "lng": 35.4487985,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "تول"
+  },
+  "معروب": {
+    "lat": 33.2843009,
+    "lng": 35.3467306,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "معروب"
+  },
+  "دردغيا": {
+    "lat": 33.2801891,
+    "lng": 35.3702877,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "دردغيا"
+  },
+  "الغربية زوطر": {
+    "lat": 33.32506,
+    "lng": 35.4518055,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "الغربية زوطر"
+  },
+  "ميفدون": {
+    "lat": 33.3451027,
+    "lng": 35.4740569,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "ميفدون"
+  },
+  "شوكين": {
+    "lat": 33.3529729,
+    "lng": 35.4621667,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "شوكين"
+  },
+  "كفر صير": {
+    "lat": 33.3259445,
+    "lng": 35.3999629,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "كفر صير"
+  },
+  "زبدين": {
+    "lat": 33.3765834,
+    "lng": 35.4620874,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "زبدين"
+  },
+  "زوطر الغربية": {
+    "lat": 33.32506,
+    "lng": 35.4518055,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "زوطر الغربية"
+  },
+  "كفرصير": {
+    "lat": 33.3156315,
+    "lng": 35.3966304,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "كفرصير"
+  },
+  "لبنان": {
+    "lat": 33.8750629,
+    "lng": 35.843409,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "لبنان"
+  },
+  "يحمر الشقيف": {
+    "lat": 33.3123651,
+    "lng": 35.5177474,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "يحمر الشقيف"
+  },
+  "خربة سلم": {
+    "lat": 33.2321883,
+    "lng": 35.4195742,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "خربة سلم"
+  },
+  "برج قلويه": {
+    "lat": 33.2604946,
+    "lng": 35.4228414,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "برج قلويه"
+  },
+  "قلويه": {
+    "lat": 33.2503924,
+    "lng": 35.4195115,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "قلويه"
+  },
+  "عين قانا": {
+    "lat": 33.4683497,
+    "lng": 35.4987163,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "عين قانا"
+  },
+  "عرمون": {
+    "lat": 34.0187141,
+    "lng": 35.6984042,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "عرمون"
+  },
+  "تعنايل": {
+    "lat": 33.7960714,
+    "lng": 35.8720779,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "تعنايل"
+  },
+  "شمسطار": {
+    "lat": 33.9594506,
+    "lng": 36.020341,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "شمسطار"
+  },
+  "جديدة المتن": {
+    "lat": 33.8921658,
+    "lng": 35.5703807,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "جديدة المتن"
+  },
+  "درون": {
+    "lat": 33.9748175,
+    "lng": 35.6550447,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "درون"
+  },
+  "بريتال": {
+    "lat": 33.938595,
+    "lng": 36.1470753,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "بريتال"
+  },
+  "الضاحية": {
+    "lat": 33.8452574,
+    "lng": 35.5070506,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "الضاحية"
+  },
+  "الصالحية": {
+    "lat": 33.5590764,
+    "lng": 35.4258103,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "الصالحية"
+  },
+  "جناح": {
+    "lat": 33.8656986,
+    "lng": 35.4839891,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "جناح"
+  },
+  "حارة حريك": {
+    "lat": 33.8544043,
+    "lng": 35.5112726,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "حارة حريك"
+  },
+  "غبيري": {
+    "lat": 33.8597545,
+    "lng": 35.5056707,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "غبيري"
+  },
+  "كفر تبنيت": {
+    "lat": 33.3518804,
+    "lng": 35.5186337,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "كفر تبنيت"
+  },
+  "دورس": {
+    "lat": 33.9879022,
+    "lng": 36.1796817,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "دورس"
+  },
+  "مجدلون": {
+    "lat": 33.9900271,
+    "lng": 36.1357719,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "مجدلون"
+  },
+  "بوداي": {
+    "lat": 34.0593438,
+    "lng": 36.0546457,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "بوداي"
+  },
+  "تولين": {
+    "lat": 33.2544257,
+    "lng": 35.4399098,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "تولين"
+  },
+  "قبريخا": {
+    "lat": 33.2463365,
+    "lng": 35.4633638,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "قبريخا"
+  },
+  "مجدل زون": {
+    "lat": 33.1503227,
+    "lng": 35.2260287,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "مجدل زون"
+  },
+  "تبنين": {
+    "lat": 33.1924616,
+    "lng": 35.4048328,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "تبنين"
+  },
+  "السلطانية": {
+    "lat": 33.2055219,
+    "lng": 35.407732,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "السلطانية"
+  },
+  "سحمر": {
+    "lat": 33.5191638,
+    "lng": 35.6907891,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "سحمر"
+  },
+  "مشغرة": {
+    "lat": 33.5219228,
+    "lng": 35.6571226,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "مشغرة"
+  },
+  "معشوق": {
+    "lat": 33.267075,
+    "lng": 35.224205,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "معشوق"
+  },
+  "يحفوفا": {
+    "lat": 33.8566641,
+    "lng": 36.1324702,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "يحفوفا"
+  },
+  "إيران": {
+    "lat": 33.8565656,
+    "lng": 35.489213,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "إيران"
+  },
+  "دير عامص": {
+    "lat": 33.1933768,
+    "lng": 35.3424074,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "دير عامص"
+  },
+  "بدنايل": {
+    "lat": 34.2946648,
+    "lng": 35.7329434,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "بدنايل"
+  },
+  "تمنين الفوقا": {
+    "lat": 33.9037523,
+    "lng": 35.9797633,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "تمنين الفوقا"
+  },
+  "القليلة": {
+    "lat": 33.1964091,
+    "lng": 35.2294152,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "القليلة"
+  },
+  "زغدريا": {
+    "lat": 33.5318283,
+    "lng": 35.3948496,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "زغدريا"
+  }
+}

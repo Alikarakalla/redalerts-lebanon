@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import { config } from './config.js';
-import { isMappableAlert, processMessage } from './processMessage.js';
+import { getMappableAlerts, processMessage } from './processMessage.js';
 import { getStorageMode, saveAlert } from './supabaseStore.js';
 import { isLikelyDuplicate } from './dedupe.js';
 import { getChannelMessagesSince, getLatestChannelMessages, startTelegramListener } from './telegramListener.js';
@@ -19,29 +19,40 @@ app.get('/api/health', async (_req, res) => {
   });
 });
 
-app.get('/api/alerts', async (req, res) => {
-  try {
-    const channelMessages = await getChannelMessagesSince(24, config.telegramChannels[0], 400);
-    const processedAlerts = [];
+async function getTelegramAlerts() {
+  const processedAlerts = [];
+  const channels = config.telegramChannels.length > 0 ? config.telegramChannels : [undefined];
+
+  for (const channel of channels) {
+    const channelMessages = await getChannelMessagesSince(24, channel, 400);
 
     for (const message of channelMessages) {
       const processed = await processMessage(message.text, message.channel);
-      processed.alert.timestamp = message.timestamp;
+      const mappableAlerts = getMappableAlerts(processed).map((alert) => ({
+        ...alert,
+        timestamp: message.timestamp,
+      }));
 
-      if (!isMappableAlert(processed)) {
-        continue;
+      for (const alert of mappableAlerts) {
+        if (isLikelyDuplicate(alert, processedAlerts)) {
+          continue;
+        }
+
+        processedAlerts.push({
+          ...alert,
+          source: 'telegram',
+          sourceLabel: message.channel?.toLowerCase().includes('redlinkleb') ? 'Telegram · RedLink' : 'Telegram',
+        });
       }
-
-      if (isLikelyDuplicate(processed.alert, processedAlerts)) {
-        continue;
-      }
-
-      processedAlerts.push(processed.alert);
     }
+  }
 
-    const alerts = processedAlerts
-      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+  return processedAlerts.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+}
 
+app.get('/api/alerts', async (req, res) => {
+  try {
+    const alerts = await getTelegramAlerts();
     res.json({ alerts });
   } catch (error) {
     console.error('Failed to fetch alerts:', error);
@@ -70,8 +81,14 @@ app.post('/api/process-message', async (req, res) => {
     }
 
     const processed = await processMessage(text, sourceChannel);
-    const result = await saveAlert(processed.alert);
-    return res.json(result);
+    const alerts = getMappableAlerts(processed);
+    const results = [];
+
+    for (const alert of alerts) {
+      results.push(await saveAlert(alert));
+    }
+
+    return res.json({ saved: results.some((result) => result.saved), results });
   } catch (error) {
     console.error('Failed to process message:', error);
     return res.status(500).json({ error: 'Failed to process message' });
@@ -86,12 +103,17 @@ async function bootstrap() {
   await startTelegramListener(async ({ text, sourceChannel }) => {
     try {
       const processed = await processMessage(text, sourceChannel);
-      if (!isMappableAlert(processed)) {
+      const alerts = getMappableAlerts(processed);
+
+      if (alerts.length === 0) {
         return;
       }
-      const result = await saveAlert(processed.alert);
-      if (result.saved) {
-        console.log(`Saved alert from ${sourceChannel}: ${processed.alert.locationName}`);
+
+      for (const alert of alerts) {
+        const result = await saveAlert(alert);
+        if (result.saved) {
+          console.log(`Saved alert from ${sourceChannel}: ${alert.locationName}`);
+        }
       }
     } catch (error) {
       console.error('Listener pipeline failed:', error);

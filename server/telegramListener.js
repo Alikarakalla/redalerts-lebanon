@@ -93,24 +93,30 @@ async function ensureTelegramClient() {
   return client;
 }
 
-export async function getLatestChannelMessages(limit = 10, channel = config.telegramChannels[0]) {
+export async function getLatestChannelMessages(limit = 10, channel) {
   if (!hasTelegramConfig()) {
     return latestRawMessages.slice(0, limit);
   }
 
   const telegramClient = await ensureTelegramClient();
-  const targetChannel = channel || config.telegramChannels[0];
+  const targetChannels = channel ? [channel] : config.telegramChannels;
 
-  if (!targetChannel) {
+  if (!targetChannels || targetChannels.length === 0) {
     return latestRawMessages.slice(0, limit);
   }
 
-  const messages = await telegramClient.getMessages(targetChannel, { limit });
+  const batches = await Promise.all(
+    targetChannels.map((targetChannel) =>
+      telegramClient.getMessages(targetChannel, { limit }).then((messages) =>
+        messages.map((message) => normalizeTelegramMessage(message, targetChannel)).filter(Boolean)
+      )
+    )
+  );
 
-  return messages
-    .map((message) => normalizeTelegramMessage(message, targetChannel))
-    .filter(Boolean)
-    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  return batches
+    .flat()
+    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+    .slice(0, limit);
 }
 
 export async function getChannelMessagesSince(hours = 24, channel = config.telegramChannels[0], maxMessages = 300) {

@@ -1,10 +1,24 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import * as Accordion from '@radix-ui/react-accordion';
 import * as Dialog from '@radix-ui/react-dialog';
-import * as Switch from '@radix-ui/react-switch';
-import * as Tabs from '@radix-ui/react-tabs';
 import * as Tooltip from '@radix-ui/react-tooltip';
+import { SlidersHorizontal } from 'lucide-react';
+import {
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  TabsContents,
+  TabsContent,
+} from '@/components/animate-ui/components/animate/tabs';
+import {
+  Sheet,
+  SheetTrigger,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+} from '@/components/animate-ui/components/radix/sheet';
 import MapComponent from './components/MapComponent';
 
 const LEBANON_CENTER = [33.8547, 35.8623];
@@ -16,7 +30,7 @@ const LIVE_STREAMS = {
     watchUrl: 'https://www.youtube.com/watch?v=R9E3xvbZWjw',
     logo: 'https://upload.wikimedia.org/wikipedia/en/thumb/3/33/Al_Mayadeen_logo.svg/250px-Al_Mayadeen_logo.svg.png',
     label: 'Al Mayadeen',
-    labelAr: 'الميادين',
+    labelAr: '\u0627\u0644\u0645\u064a\u0627\u062f\u064a\u0646',
   },
   jazeera: {
     id: 'jazeera',
@@ -24,21 +38,27 @@ const LIVE_STREAMS = {
     watchUrl: 'https://www.youtube.com/watch?v=bNyUyrR0PHo',
     logo: 'https://upload.wikimedia.org/wikipedia/fr/thumb/0/0f/Al_Jazeera.svg/120px-Al_Jazeera.svg.png?_=20071211205036',
     label: 'Al Jazeera',
-    labelAr: 'الجزيرة',
+    labelAr: '\u0627\u0644\u062c\u0632\u064a\u0631\u0629',
+  },
+  alarabiya: {
+    id: 'alarabiya',
+    youtubeId: 'n7eQejkXbnM',
+    watchUrl: 'https://www.youtube.com/watch?v=n7eQejkXbnM',
+    logo: 'https://yt3.ggpht.com/GoZXY6BOD_V0vV3ok3fAzIbNMx3og4z2Jd2Up0BnocvBn35rMB4NG3vMOdzOpQ4-HFBUfDQ-JQ=s48-c-k-c0x00ffffff-no-rj',
+    label: 'Al Arabiya',
+    labelAr: '\u0627\u0644\u0639\u0631\u0628\u064a\u0629',
   },
 };
 
 const TRANSLATIONS = {
   en: {
     dir: 'ltr',
-    appTitle: 'Lebanon Conflict & Crisis Tracker',
+    appTitle: 'Red Alerts Lebanon',
     liveFeed: 'Live monitoring feed',
     mappedLive: 'Mapped from the last 24 hours',
     mappedEmpty: 'No incidents in the last 24 hours',
     backendError: 'Backend unavailable',
     connecting: 'Connecting',
-    batterySaver: 'Battery Saver',
-    showMap: 'Show Map',
     latestReports: 'Latest Reports',
     feedDetails: 'Feed Details',
     mappedTab: 'Mapped',
@@ -53,8 +73,6 @@ const TRANSLATIONS = {
     hide: 'Hide',
     open: 'Open',
     noReports: 'No mapped incidents found in the last 24 hours.',
-    batteryTitle: 'Battery Saver Mode',
-    batteryText: 'Map rendering is paused. Live reports remain active in the text feed.',
     shareWhatsApp: 'Share to WhatsApp',
     share: 'Share',
     copySummary: 'Copy summary',
@@ -66,7 +84,7 @@ const TRANSLATIONS = {
     openOnYoutube: 'Open on YouTube',
     embedFallback: 'If the live stream is blocked here, open it directly on YouTube.',
     incidentIn: (label, location) => `${label} in ${location}`,
-    whatsappTitle: 'Lebanon Conflict Tracker',
+    whatsappTitle: 'Red Alerts Lebanon',
     severityPrefix: 'Severity',
     timePrefix: 'Time',
     timeAgoMinutes: (minutes) => `${minutes}m ago`,
@@ -76,6 +94,7 @@ const TRANSLATIONS = {
       explosion: 'Explosion',
       artillery: 'Artillery',
       airstrike: 'Airstrike',
+      warplane: 'Warplane',
       missile: 'Missile',
       drone: 'Drone',
       default: 'Incident',
@@ -88,59 +107,56 @@ const TRANSLATIONS = {
   },
   ar: {
     dir: 'rtl',
-    appTitle: 'متتبع الأزمات والتصعيد في لبنان',
-    liveFeed: 'بث مراقبة مباشر',
-    mappedLive: 'مرصود من آخر 24 ساعة',
-    mappedEmpty: 'لا توجد أحداث في آخر 24 ساعة',
-    backendError: 'الخادم غير متاح',
-    connecting: 'جارٍ الاتصال',
-    batterySaver: 'توفير البطارية',
-    showMap: 'إظهار الخريطة',
-    latestReports: 'آخر التقارير',
-    feedDetails: 'تفاصيل البث',
-    mappedTab: 'الخرائط',
-    telegramTab: 'القناة',
-    telegramWire: 'سلك تيليجرام',
-    telegramSource: 'آخر منشورات القناة',
-    noWire: 'لا توجد منشورات تيليجرام حاليًا.',
-    newBadge: 'جديد',
-    markSeen: 'تمت القراءة',
-    unreadPosts: (count) => `${count} منشورات غير مقروءة`,
-    mappedCount: (count) => `${count} أحداث مرصودة من آخر 24 ساعة`,
-    hide: 'إخفاء',
-    open: 'فتح',
-    noReports: 'لا توجد أحداث مرصودة في آخر 24 ساعة.',
-    batteryTitle: 'وضع توفير البطارية',
-    batteryText: 'تم إيقاف عرض الخريطة مؤقتًا. تبقى التقارير المباشرة متاحة في القائمة.',
-    shareWhatsApp: 'مشاركة واتساب',
-    share: 'مشاركة',
-    copySummary: 'نسخ الملخص',
-    viewOnMap: 'عرض على الخريطة',
-    openDetails: 'فتح التفاصيل',
-    liveChannels: 'بث مباشر',
-    watchLive: 'مشاهدة البث الآن',
-    closeLive: 'إغلاق المشغل',
-    openOnYoutube: 'فتح على يوتيوب',
-    embedFallback: 'إذا كان البث محجوبًا داخل الموقع، افتحه مباشرة على يوتيوب.',
-    incidentIn: (label, location) => `${label} في ${location}`,
-    whatsappTitle: 'متتبع الأزمات والتصعيد في لبنان',
-    severityPrefix: 'الخطورة',
-    timePrefix: 'الوقت',
-    timeAgoMinutes: (minutes) => `منذ ${minutes} دقيقة`,
+    appTitle: 'Red Alerts Lebanon',
+    liveFeed: '\u0628\u062b \u0645\u0631\u0627\u0642\u0628\u0629 \u0645\u0628\u0627\u0634\u0631',
+    mappedLive: '\u0645\u0631\u0635\u0648\u062f \u0645\u0646 \u0622\u062e\u0631 24 \u0633\u0627\u0639\u0629',
+    mappedEmpty: '\u0644\u0627 \u062a\u0648\u062c\u062f \u0623\u062d\u062f\u0627\u062b \u0641\u064a \u0622\u062e\u0631 24 \u0633\u0627\u0639\u0629',
+    backendError: '\u0627\u0644\u062e\u0627\u062f\u0645 \u063a\u064a\u0631 \u0645\u062a\u0627\u062d',
+    connecting: '\u062c\u0627\u0631\u064d \u0627\u0644\u0627\u062a\u0635\u0627\u0644',
+    latestReports: '\u0622\u062e\u0631 \u0627\u0644\u062a\u0642\u0627\u0631\u064a\u0631',
+    feedDetails: '\u062a\u0641\u0627\u0635\u064a\u0644 \u0627\u0644\u0628\u062b',
+    mappedTab: '\u0627\u0644\u062e\u0631\u064a\u0637\u0629',
+    telegramTab: '\u0627\u0644\u0642\u0646\u0627\u0629',
+    telegramWire: '\u0633\u0644\u0643 \u062a\u064a\u0644\u064a\u062c\u0631\u0627\u0645',
+    telegramSource: '\u0622\u062e\u0631 \u0645\u0646\u0634\u0648\u0631\u0627\u062a \u0627\u0644\u0642\u0646\u0627\u0629',
+    noWire: '\u0644\u0627 \u062a\u0648\u062c\u062f \u0645\u0646\u0634\u0648\u0631\u0627\u062a \u062a\u064a\u0644\u064a\u062c\u0631\u0627\u0645 \u062d\u0627\u0644\u064a\u0627\u064b.',
+    newBadge: '\u062c\u062f\u064a\u062f',
+    markSeen: '\u062a\u0645\u062a \u0627\u0644\u0642\u0631\u0627\u0621\u0629',
+    unreadPosts: (count) => `${count} \u0645\u0646\u0634\u0648\u0631\u0627\u062a \u063a\u064a\u0631 \u0645\u0642\u0631\u0648\u0621\u0629`,
+    mappedCount: (count) => `${count} \u0623\u062d\u062f\u0627\u062b \u0645\u0631\u0635\u0648\u062f\u0629 \u0645\u0646 \u0622\u062e\u0631 24 \u0633\u0627\u0639\u0629`,
+    hide: '\u0625\u062e\u0641\u0627\u0621',
+    open: '\u0641\u062a\u062d',
+    noReports: '\u0644\u0627 \u062a\u0648\u062c\u062f \u0623\u062d\u062f\u0627\u062b \u0645\u0631\u0635\u0648\u062f\u0629 \u0641\u064a \u0622\u062e\u0631 24 \u0633\u0627\u0639\u0629.',
+    shareWhatsApp: '\u0645\u0634\u0627\u0631\u0643\u0629 \u0648\u0627\u062a\u0633\u0627\u0628',
+    share: '\u0645\u0634\u0627\u0631\u0643\u0629',
+    copySummary: '\u0646\u0633\u062e \u0627\u0644\u0645\u0644\u062e\u0635',
+    viewOnMap: '\u0639\u0631\u0636 \u0639\u0644\u0649 \u0627\u0644\u062e\u0631\u064a\u0637\u0629',
+    openDetails: '\u0641\u062a\u062d \u0627\u0644\u062a\u0641\u0627\u0635\u064a\u0644',
+    liveChannels: '\u0628\u062b \u0645\u0628\u0627\u0634\u0631',
+    watchLive: '\u0645\u0634\u0627\u0647\u062f\u0629 \u0627\u0644\u0628\u062b \u0627\u0644\u0622\u0646',
+    closeLive: '\u0625\u063a\u0644\u0627\u0642 \u0627\u0644\u0645\u0634\u063a\u0644',
+    openOnYoutube: '\u0641\u062a\u062d \u0639\u0644\u0649 \u064a\u0648\u062a\u064a\u0648\u0628',
+    embedFallback: '\u0625\u0630\u0627 \u0643\u0627\u0646 \u0627\u0644\u0628\u062b \u0645\u062d\u062c\u0648\u0628\u0627\u064b \u062f\u0627\u062e\u0644 \u0627\u0644\u0645\u0648\u0642\u0639\u060c \u0627\u0641\u062a\u062d\u0647 \u0645\u0628\u0627\u0634\u0631\u0629 \u0639\u0644\u0649 \u064a\u0648\u062a\u064a\u0648\u0628.',
+    incidentIn: (label, location) => `${label} \u0641\u064a ${location}`,
+    whatsappTitle: 'Red Alerts Lebanon',
+    severityPrefix: '\u0627\u0644\u062e\u0637\u0648\u0631\u0629',
+    timePrefix: '\u0627\u0644\u0648\u0642\u062a',
+    timeAgoMinutes: (minutes) => `\u0645\u0646\u0630 ${minutes} \u062f\u0642\u064a\u0642\u0629`,
     timeAgoHours: (hours, remaining) =>
-      remaining ? `منذ ${hours} ساعة و${remaining} دقيقة` : `منذ ${hours} ساعة`,
+      remaining ? `\u0645\u0646\u0630 ${hours} \u0633\u0627\u0639\u0629 \u0648${remaining} \u062f\u0642\u064a\u0642\u0629` : `\u0645\u0646\u0630 ${hours} \u0633\u0627\u0639\u0629`,
     eventLabels: {
-      explosion: 'انفجار',
-      artillery: 'قصف مدفعي',
-      airstrike: 'غارة',
-      missile: 'صاروخ',
-      drone: 'مسيّرة',
-      default: 'حادث',
+      explosion: '\u0627\u0646\u0641\u062c\u0627\u0631',
+      artillery: '\u0642\u0635\u0641 \u0645\u062f\u0641\u0639\u064a',
+      airstrike: '\u063a\u0627\u0631\u0629',
+      warplane: '\u0645\u0642\u0627\u062a\u0644\u0627\u062a \u062d\u0631\u0628\u064a\u0629',
+      missile: '\u0635\u0627\u0631\u0648\u062e',
+      drone: '\u0645\u0633\u064a\u0631\u0629',
+      default: '\u062d\u0627\u062f\u062b',
     },
     severityLabels: {
-      high: 'مرتفعة',
-      medium: 'متوسطة',
-      low: 'منخفضة',
+      high: '\u0645\u0631\u062a\u0641\u0639\u0629',
+      medium: '\u0645\u062a\u0648\u0633\u0637\u0629',
+      low: '\u0645\u0646\u062e\u0641\u0636\u0629',
     },
   },
 };
@@ -178,6 +194,33 @@ function formatEventLabel(type, locale) {
 function formatSeverityLabel(severity, locale) {
   const labels = TRANSLATIONS[locale].severityLabels;
   return labels[severity] ?? labels.low;
+}
+
+function formatWindowLabel(windowKey, locale) {
+  if (windowKey === '30m') {
+    return locale === 'ar' ? '\u0622\u062e\u0631 30 \u062f\u0642\u064a\u0642\u0629' : 'Last 30 min';
+  }
+  if (windowKey === '2h') {
+    return locale === 'ar' ? '\u0622\u062e\u0631 \u0633\u0627\u0639\u062a\u064a\u0646' : 'Last 2h';
+  }
+  return locale === 'ar' ? '\u0622\u062e\u0631 24 \u0633\u0627\u0639\u0629' : 'Last 24h';
+}
+
+function LiveTimestamp({ locale }) {
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    const clock = setInterval(() => {
+      setNow(Date.now());
+    }, 30_000);
+
+    return () => clearInterval(clock);
+  }, []);
+
+  return new Intl.DateTimeFormat(getLocaleTag(locale), {
+    dateStyle: 'full',
+    timeStyle: 'medium',
+  }).format(now);
 }
 
 function playAlertTone() {
@@ -353,32 +396,6 @@ function IconTooltip({ label, children }) {
   );
 }
 
-function BatterySwitch({ checked, onCheckedChange, label }) {
-  return (
-    <label className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-300">
-      <span>{label}</span>
-      <Switch.Root
-        checked={checked}
-        onCheckedChange={onCheckedChange}
-        className={`relative h-5 w-10 rounded-full border border-white/10 transition ${
-          checked ? 'bg-emerald-500/70' : 'bg-slate-700'
-        }`}
-        aria-label={label}
-      >
-        <Switch.Thumb asChild>
-          <motion.span
-            layout
-            transition={{ type: 'spring', stiffness: 500, damping: 32 }}
-            className={`absolute top-0.5 h-4 w-4 rounded-full bg-white ${
-              checked ? 'left-5' : 'left-0.5'
-            }`}
-          />
-        </Switch.Thumb>
-      </Switch.Root>
-    </label>
-  );
-}
-
 function ShareButton({ event, locale }) {
   const t = TRANSLATIONS[locale];
   const [open, setOpen] = useState(false);
@@ -457,7 +474,7 @@ function LiveChannelButton({ stream, locale, active, onClick }) {
       whileHover={{ y: -1 }}
       whileTap={{ scale: 0.98 }}
       onClick={onClick}
-      className={`relative flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-medium transition ${
+      className={`relative flex items-center gap-2 rounded-full border px-2.5 py-2 text-[11px] font-medium transition sm:px-3 sm:text-xs ${
         active
           ? 'border-white/20 bg-white/10 text-white shadow-lg shadow-black/20'
           : 'border-white/10 bg-white/5 text-slate-200 hover:bg-white/10'
@@ -465,7 +482,7 @@ function LiveChannelButton({ stream, locale, active, onClick }) {
       aria-label={label}
       title={label}
     >
-      <span className="grid h-6 w-6 place-items-center overflow-hidden rounded-full border border-white/10 bg-white/5 p-1">
+      <span className="grid h-5 w-5 place-items-center overflow-hidden rounded-full border border-white/10 bg-white/5 p-1 sm:h-6 sm:w-6">
         <img src={stream.logo} alt={label} className="h-full w-full object-contain" />
       </span>
       <span className="hidden lg:inline">{label}</span>
@@ -739,7 +756,7 @@ function SidebarPanel({
   const t = TRANSLATIONS[locale];
 
   return (
-    <Tabs.Root
+    <Tabs
       value={sidebarTab}
       onValueChange={onTabChange}
       className="flex h-full flex-col"
@@ -791,24 +808,17 @@ function SidebarPanel({
         </Accordion.Item>
       </Accordion.Root>
 
-      <Tabs.List className="mb-4 grid grid-cols-2 rounded-2xl border border-white/10 bg-white/[0.03] p-1">
+      <TabsList className="mb-4 grid h-auto w-full grid-cols-2 rounded-2xl border border-white/10 bg-white/[0.03] p-1">
         {[
           { value: 'mapped', label: t.mappedTab ?? t.latestReports, badge: 0 },
           { value: 'wire', label: t.telegramTab ?? t.telegramWire, badge: newCount },
         ].map((tab) => (
-          <Tabs.Trigger
+          <TabsTrigger
             key={tab.value}
             value={tab.value}
-            className="relative rounded-xl px-3 py-2 text-sm font-medium text-slate-400 outline-none transition data-[state=active]:text-white"
+            className="rounded-xl px-3 py-2 text-sm font-medium text-slate-400 outline-none transition data-[state=active]:text-white"
           >
-            {sidebarTab === tab.value ? (
-              <motion.span
-                layoutId="sidebar-tab-indicator"
-                className="absolute inset-0 rounded-xl border border-white/10 bg-white/10"
-                transition={{ type: 'spring', stiffness: 380, damping: 30 }}
-              />
-            ) : null}
-            <span className="relative z-10 inline-flex items-center gap-2">
+            <span className="inline-flex items-center gap-2">
               {tab.label}
               {tab.badge > 0 ? (
                 <span className="rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-semibold text-white">
@@ -816,45 +826,47 @@ function SidebarPanel({
                 </span>
               ) : null}
             </span>
-          </Tabs.Trigger>
+          </TabsTrigger>
         ))}
-      </Tabs.List>
+      </TabsList>
 
-      <Tabs.Content value="mapped" className="min-h-0 flex-1 overflow-hidden data-[state=inactive]:hidden">
-        <div className="h-full space-y-3 overflow-y-auto pr-1">
-          <AnimatePresence initial={false}>
-            {events.length > 0 ? (
-              events.map((event) => (
-                <ReportCard
-                  key={event.id}
-                  event={event}
-                  locale={locale}
-                  onFocus={(item) => onFocus(item)}
-                />
-              ))
-            ) : (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="rounded-2xl border border-dashed border-white/10 px-4 py-6 text-sm text-slate-500"
-              >
-                {t.noReports}
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-      </Tabs.Content>
-
-      <Tabs.Content value="wire" className="min-h-0 flex-1 data-[state=inactive]:hidden">
-        <TelegramWire
-          locale={locale}
-          messages={messages}
-          newCount={newCount}
-          onSeen={onSeen}
-          onOpenMessage={onOpenMessage}
-        />
-      </Tabs.Content>
-    </Tabs.Root>
+      <TabsContents className="min-h-0 flex-1">
+        <TabsContent value="mapped" className="min-h-0 h-full overflow-hidden">
+          <div className="h-full space-y-3 overflow-y-auto pr-1">
+            <AnimatePresence initial={false}>
+              {events.length > 0 ? (
+                events.map((event) => (
+                  <ReportCard
+                    key={event.id}
+                    event={event}
+                    locale={locale}
+                    onFocus={(item) => onFocus(item)}
+                  />
+                ))
+              ) : (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="rounded-2xl border border-dashed border-white/10 px-4 py-6 text-sm text-slate-500"
+                >
+                  {t.noReports}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        </TabsContent>
+ 
+        <TabsContent value="wire" className="min-h-0 h-full overflow-hidden">
+          <TelegramWire
+            locale={locale}
+            messages={messages}
+            newCount={newCount}
+            onSeen={onSeen}
+            onOpenMessage={onOpenMessage}
+          />
+        </TabsContent>
+      </TabsContents>
+    </Tabs>
   );
 }
 
@@ -863,100 +875,105 @@ function LanguageToggle({ locale, onToggle }) {
     <button
       type="button"
       onClick={onToggle}
-      className="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs font-medium text-slate-200 transition hover:bg-white/10"
+      className="shrink-0 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs font-medium text-slate-200 transition hover:bg-white/10"
     >
-      {locale === 'ar' ? 'English' : 'العربية'}
+      {locale === 'ar' ? 'English' : '\u0627\u0644\u0639\u0631\u0628\u064a\u0629'}
     </button>
   );
 }
 
+const FILTER_TYPES = ['all', 'drone', 'warplane', 'airstrike', 'artillery', 'explosion', 'missile'];
+const FILTER_WINDOWS = ['30m', '2h', '24h'];
+
+function getTypeFilterLabel(type, locale) {
+  if (type === 'all') {
+    return locale === 'ar' ? '\u0627\u0644\u0643\u0644' : 'All';
+  }
+
+  return formatEventLabel(type, locale);
+}
+
 function App() {
   const { events, status } = useStrikeData();
-  const { messages, newCount, markSeen } = useTelegramFeed();
   const [locale, setLocale] = useState('ar');
   const [activeStreamId, setActiveStreamId] = useState(null);
   const [focusedEvent, setFocusedEvent] = useState(null);
-  const [selectedMessage, setSelectedMessage] = useState(null);
-  const [batterySaver, setBatterySaver] = useState(false);
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [sidebarTab, setSidebarTab] = useState('mapped');
-  const [now, setNow] = useState(Date.now());
+  const [activeType, setActiveType] = useState('all');
+  const [activeWindow, setActiveWindow] = useState('2h');
+  const shellRef = useRef(null);
 
   useEffect(() => {
-    const clock = setInterval(() => {
-      setNow(Date.now());
-    }, 5000);
+    const shell = shellRef.current;
+    if (!shell || window.matchMedia('(pointer: coarse)').matches) {
+      return undefined;
+    }
 
-    return () => clearInterval(clock);
+    let frameId = null;
+
+    const updatePointerGlow = (event) => {
+      if (frameId) {
+        cancelAnimationFrame(frameId);
+      }
+
+      frameId = requestAnimationFrame(() => {
+        shell.style.setProperty('--cursor-x', `${event.clientX}px`);
+        shell.style.setProperty('--cursor-y', `${event.clientY}px`);
+        shell.style.setProperty('--cursor-opacity', '1');
+      });
+    };
+
+    const hidePointerGlow = () => {
+      shell.style.setProperty('--cursor-opacity', '0');
+    };
+
+    window.addEventListener('pointermove', updatePointerGlow, { passive: true });
+    window.addEventListener('pointerleave', hidePointerGlow);
+    window.addEventListener('blur', hidePointerGlow);
+
+    return () => {
+      if (frameId) {
+        cancelAnimationFrame(frameId);
+      }
+      window.removeEventListener('pointermove', updatePointerGlow);
+      window.removeEventListener('pointerleave', hidePointerGlow);
+      window.removeEventListener('blur', hidePointerGlow);
+    };
   }, []);
 
   const t = TRANSLATIONS[locale];
   const activeStream = activeStreamId ? LIVE_STREAMS[activeStreamId] : null;
+  const activeWindowLabel = formatWindowLabel(activeWindow, locale);
+
   const statusText =
     status === 'live'
-      ? t.mappedLive
+      ? `${locale === 'ar' ? '\u0645\u0631\u0635\u0648\u062f \u0645\u0646' : 'Mapped from'} ${activeWindowLabel}`
       : status === 'empty'
-        ? t.mappedEmpty
+        ? locale === 'ar'
+          ? `\u0644\u0627 \u062a\u0648\u062c\u062f \u0623\u062d\u062f\u0627\u062b \u0641\u064a ${activeWindowLabel}`
+          : `No incidents in ${activeWindowLabel}`
         : status === 'error'
           ? t.backendError
           : t.connecting;
 
-  function focusEvent(item) {
-    setFocusedEvent(item);
-    setDrawerOpen(false);
-    setBatterySaver(false);
-  }
-
-  const sidebarPanel = (
-    <SidebarPanel
-      locale={locale}
-      events={events}
-      messages={messages}
-      newCount={newCount}
-      sidebarTab={sidebarTab}
-      onTabChange={(value) => {
-        setSidebarTab(value);
-        if (value === 'wire') {
-          markSeen();
-        }
-      }}
-      onSeen={markSeen}
-      onFocus={focusEvent}
-      onOpenMessage={(message) => {
-        setSelectedMessage(message);
-        if (sidebarTab !== 'wire') {
-          setSidebarTab('wire');
-        }
-      }}
-      drawerOpen={drawerOpen}
-      onToggleDrawer={() => setDrawerOpen((open) => !open)}
-    />
-  );
-
   return (
-    <div className="min-h-screen bg-[#07111a] text-slate-100" dir={t.dir}>
-      <div className="mx-auto flex min-h-screen max-w-[1600px] flex-col px-3 py-3 md:px-4 md:py-4">
-        <header className="glass-panel mb-3 flex items-center justify-between gap-3 rounded-2xl px-4 py-3">
-          <div className="flex min-w-0 items-center gap-3">
+    <div ref={shellRef} className="workspace-shell min-h-screen text-slate-100" dir={t.dir}>
+      <div className="mx-auto flex min-h-screen max-w-[1800px] flex-col px-3 py-3 sm:px-4 sm:py-4 md:px-6 md:py-6">
+        <header className="workspace-header mb-2 flex flex-col gap-2 px-1 py-1 sm:mb-3 md:flex-row md:items-start md:justify-between md:gap-4">
+          <div className="flex min-w-0 items-start gap-3">
             <span className="live-dot shrink-0" />
             <div className="min-w-0">
-              <h1 className="truncate text-sm font-semibold uppercase tracking-[0.3em] text-white md:text-base">
+              <h1 className="text-[12px] font-semibold uppercase tracking-[0.14em] text-white sm:text-[13px] md:truncate md:text-base md:tracking-[0.3em]">
                 {t.appTitle}
               </h1>
-              <p className="text-xs text-slate-400">
-                {t.liveFeed} |{' '}
-                {new Intl.DateTimeFormat(getLocaleTag(locale), {
-                  dateStyle: 'full',
-                  timeStyle: 'medium',
-                }).format(now)}{' '}
-                | {statusText}
+              <p className="mt-1 max-w-[28rem] text-[10px] leading-4 text-slate-400 sm:text-[11px] md:leading-5">
+                {t.liveFeed} | <LiveTimestamp locale={locale} /> | {statusText}
               </p>
             </div>
           </div>
 
-          <div className="hidden items-center gap-3 sm:flex">
-            <div className="flex items-center gap-2">
-              <span className="hidden text-[11px] font-medium uppercase tracking-[0.22em] text-slate-500 xl:inline">
+          <div className="hidden items-center gap-3 md:flex md:flex-wrap md:justify-end">
+            <div className="flex items-center gap-2 md:flex-wrap md:justify-end">
+              <span className="hidden text-[11px] font-medium uppercase tracking-[0.26em] text-slate-600 xl:inline">
                 {t.liveChannels}
               </span>
               <LiveChannelButton
@@ -971,104 +988,186 @@ function App() {
                 active={activeStreamId === 'jazeera'}
                 onClick={() => setActiveStreamId((current) => (current === 'jazeera' ? null : 'jazeera'))}
               />
+               <LiveChannelButton
+                stream={LIVE_STREAMS.alarabiya}
+                locale={locale}
+                active={activeStreamId === 'alarabiya'}
+                onClick={() => setActiveStreamId((current) => (current === 'alarabiya' ? null : 'alarabiya'))}
+              />
             </div>
             <LanguageToggle
               locale={locale}
               onToggle={() => setLocale((current) => (current === 'ar' ? 'en' : 'ar'))}
             />
-            <BatterySwitch
-              checked={batterySaver}
-              onCheckedChange={setBatterySaver}
-              label={t.batterySaver}
-            />
           </div>
         </header>
 
-        <div className="flex flex-1 gap-3 overflow-hidden">
-          <aside className="glass-panel hidden w-[380px] shrink-0 rounded-3xl p-4 md:block">
-            {sidebarPanel}
-          </aside>
+        <main className="relative flex-1">
+          <div className="mb-3 hidden flex-col gap-2 md:mb-4 md:flex">
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {FILTER_TYPES.map((type) => {
+                const label = getTypeFilterLabel(type, locale);
+                const isActive = activeType === type;
 
-          <main className="relative min-h-[70vh] flex-1 overflow-hidden rounded-3xl">
-            <div className="mb-3 flex items-center justify-between gap-3 md:hidden">
-              <div className="flex items-center gap-2">
-                <LiveChannelButton
-                  stream={LIVE_STREAMS.mayadeen}
-                  locale={locale}
-                  active={activeStreamId === 'mayadeen'}
-                  onClick={() => setActiveStreamId((current) => (current === 'mayadeen' ? null : 'mayadeen'))}
-                />
-                <LiveChannelButton
-                  stream={LIVE_STREAMS.jazeera}
-                  locale={locale}
-                  active={activeStreamId === 'jazeera'}
-                  onClick={() => setActiveStreamId((current) => (current === 'jazeera' ? null : 'jazeera'))}
-                />
+                return (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => setActiveType(type)}
+                    className={`shrink-0 rounded-full border px-3 py-2 text-[11px] font-medium transition sm:text-xs ${
+                      isActive
+                        ? 'border-white/18 bg-white/12 text-white'
+                        : 'border-white/8 bg-white/[0.03] text-slate-400 hover:bg-white/[0.07] hover:text-slate-200'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+              <div className="flex items-center gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                {FILTER_WINDOWS.map((windowKey) => {
+                  const label = formatWindowLabel(windowKey, locale);
+                  const isActive = activeWindow === windowKey;
+
+                  return (
+                    <button
+                      key={windowKey}
+                      type="button"
+                      onClick={() => setActiveWindow(windowKey)}
+                      className={`shrink-0 rounded-full border px-3 py-2 text-[11px] font-medium transition sm:text-xs ${
+                        isActive
+                          ? 'border-white/18 bg-white/10 text-white'
+                          : 'border-white/8 bg-white/[0.03] text-slate-500 hover:bg-white/[0.07] hover:text-slate-200'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
               </div>
+            </div>
+          </div>
+
+          <div className="mb-3 flex flex-col gap-2 md:hidden">
+            <div className="flex min-w-0 items-center gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              <LiveChannelButton
+                stream={LIVE_STREAMS.mayadeen}
+                locale={locale}
+                active={activeStreamId === 'mayadeen'}
+                onClick={() => setActiveStreamId((current) => (current === 'mayadeen' ? null : 'mayadeen'))}
+              />
+              <LiveChannelButton
+                stream={LIVE_STREAMS.jazeera}
+                locale={locale}
+                active={activeStreamId === 'jazeera'}
+                onClick={() => setActiveStreamId((current) => (current === 'jazeera' ? null : 'jazeera'))}
+              />
+              <LiveChannelButton
+                stream={LIVE_STREAMS.alarabiya}
+                locale={locale}
+                active={activeStreamId === 'alarabiya'}
+                onClick={() => setActiveStreamId((current) => (current === 'alarabiya' ? null : 'alarabiya'))}
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <Sheet>
+                <SheetTrigger asChild>
+                  <button
+                    type="button"
+                    className="flex h-10 shrink-0 items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 text-xs font-medium text-slate-200 transition hover:bg-white/10"
+                  >
+                    <SlidersHorizontal className="h-4 w-4" />
+                    <span>{locale === 'ar' ? '\u0627\u0644\u0641\u0644\u0627\u062a\u0631' : 'Filters'}</span>
+                  </button>
+                </SheetTrigger>
+                <SheetContent side={locale === 'ar' ? 'left' : 'right'} className="w-[min(92vw,24rem)]">
+                  <SheetHeader className="border-b border-white/10 pb-4">
+                    <SheetTitle>{locale === 'ar' ? '\u0641\u0644\u0627\u062a\u0631 \u0627\u0644\u062e\u0631\u064a\u0637\u0629' : 'Map Filters'}</SheetTitle>
+                    <SheetDescription>
+                      {locale === 'ar'
+                        ? '\u0627\u062e\u062a\u0631 \u0646\u0648\u0639 \u0627\u0644\u062d\u062f\u062b \u0648\u0627\u0644\u0646\u0637\u0627\u0642 \u0627\u0644\u0632\u0645\u0646\u064a.'
+                        : 'Choose event types and time range.'}
+                    </SheetDescription>
+                  </SheetHeader>
+                  <div className="flex flex-col gap-5 px-4 pb-6">
+                    <div>
+                      <p className="mb-3 text-[11px] font-medium uppercase tracking-[0.2em] text-slate-500">
+                        {locale === 'ar' ? '\u0646\u0648\u0639 \u0627\u0644\u062d\u062f\u062b' : 'Event Type'}
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {FILTER_TYPES.map((type) => {
+                          const label = getTypeFilterLabel(type, locale);
+                          const isActive = activeType === type;
+
+                          return (
+                            <button
+                              key={type}
+                              type="button"
+                              onClick={() => setActiveType(type)}
+                              className={`rounded-full border px-3 py-2 text-xs font-medium transition ${
+                                isActive
+                                  ? 'border-white/18 bg-white/12 text-white'
+                                  : 'border-white/8 bg-white/[0.03] text-slate-400 hover:bg-white/[0.07] hover:text-slate-200'
+                              }`}
+                            >
+                              {label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div>
+                      <p className="mb-3 text-[11px] font-medium uppercase tracking-[0.2em] text-slate-500">
+                        {locale === 'ar' ? '\u0627\u0644\u0646\u0637\u0627\u0642 \u0627\u0644\u0632\u0645\u0646\u064a' : 'Time Range'}
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {FILTER_WINDOWS.map((windowKey) => {
+                          const label = formatWindowLabel(windowKey, locale);
+                          const isActive = activeWindow === windowKey;
+
+                          return (
+                            <button
+                              key={windowKey}
+                              type="button"
+                              onClick={() => setActiveWindow(windowKey)}
+                              className={`rounded-full border px-3 py-2 text-xs font-medium transition ${
+                                isActive
+                                  ? 'border-white/18 bg-white/10 text-white'
+                                  : 'border-white/8 bg-white/[0.03] text-slate-500 hover:bg-white/[0.07] hover:text-slate-200'
+                              }`}
+                            >
+                              {label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                </SheetContent>
+              </Sheet>
+
+              <div className="min-w-0 flex-1" />
+
               <LanguageToggle
                 locale={locale}
                 onToggle={() => setLocale((current) => (current === 'ar' ? 'en' : 'ar'))}
               />
-              <BatterySwitch
-                checked={batterySaver}
-                onCheckedChange={setBatterySaver}
-                label={batterySaver ? t.showMap : t.batterySaver}
-              />
             </div>
+          </div>
 
-            {batterySaver ? (
-              <section className="glass-panel flex h-full min-h-[70vh] flex-col rounded-3xl p-4" dir={t.dir}>
-                <div className="mb-4">
-                  <h2 className="text-lg font-semibold text-white">{t.batteryTitle}</h2>
-                  <p className="text-sm text-slate-400">{t.batteryText}</p>
-                </div>
-                <div className="space-y-3 overflow-y-auto">
-                  <AnimatePresence initial={false}>
-                    {events.length > 0 ? (
-                      events.map((event) => (
-                        <ReportCard
-                          key={event.id}
-                          event={event}
-                          locale={locale}
-                          onFocus={focusEvent}
-                        />
-                      ))
-                    ) : (
-                      <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        className="rounded-2xl border border-dashed border-white/10 px-4 py-6 text-sm text-slate-500"
-                      >
-                        {t.noReports}
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-              </section>
-            ) : (
-              <MapComponent
-                center={LEBANON_CENTER}
-                events={events}
-                focusedEvent={focusedEvent}
-                locale={locale}
-              />
-            )}
-          </main>
-        </div>
-      </div>
-
-      <div
-        className={`mobile-drawer glass-panel fixed inset-x-3 bottom-3 z-[1200] rounded-[28px] border border-white/10 p-3 md:hidden ${
-          drawerOpen ? 'translate-y-0' : 'translate-y-[calc(100%-56px)]'
-        }`}
-      >
-        <button
-          type="button"
-          onClick={() => setDrawerOpen((open) => !open)}
-          className="mx-auto mb-3 block h-1.5 w-14 rounded-full bg-white/20"
-          aria-label={t.latestReports}
-        />
-        {sidebarPanel}
+          <MapComponent
+            center={LEBANON_CENTER}
+            events={events}
+            focusedEvent={focusedEvent}
+            locale={locale}
+            activeType={activeType}
+            activeWindow={activeWindow}
+          />
+        </main>
       </div>
 
       {activeStream ? (
@@ -1078,11 +1177,6 @@ function App() {
           onClose={() => setActiveStreamId(null)}
         />
       ) : null}
-      <TelegramMessageDialog
-        locale={locale}
-        message={selectedMessage}
-        onOpenChange={setSelectedMessage}
-      />
     </div>
   );
 }

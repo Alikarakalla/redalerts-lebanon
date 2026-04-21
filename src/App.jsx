@@ -912,6 +912,10 @@ function App() {
   const shellRef = useRef(null);
 
   useEffect(() => {
+    fetch(`${import.meta.env.VITE_API_BASE_URL || ''}/api/track`, { method: 'POST' }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
     const shell = shellRef.current;
     if (!shell || window.matchMedia('(pointer: coarse)').matches) {
       return undefined;

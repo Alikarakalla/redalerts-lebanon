@@ -115,6 +115,44 @@ export default function DashboardModal({ onClose, locale }) {
                     </div>
                   </div>
                 </div>
+
+                <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-6">
+                  <h3 className="mb-4 text-sm font-medium text-slate-400">
+                    {isAr ? 'الزوار الجدد المباشرين' : 'Recent Live Visitors'}
+                  </h3>
+                  <div className="max-h-48 overflow-y-auto pr-2">
+                    {stats.recentVisitors && stats.recentVisitors.length > 0 ? (
+                      <table className="w-full text-left text-xs">
+                        <thead>
+                          <tr className="border-b border-white/10 text-slate-500">
+                            <th className="pb-2 font-medium">IP</th>
+                            <th className="pb-2 font-medium">Location</th>
+                            <th className="pb-2 font-medium text-right">Device</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/5">
+                          {stats.recentVisitors.map((visitor, i) => (
+                            <tr key={i} className="text-slate-300">
+                              <td className="py-2.5 pr-4 font-mono text-[11px] text-slate-400">
+                                {visitor.ip}
+                              </td>
+                              <td className="py-2.5 pr-4 truncate max-w-[120px]">
+                                {visitor.location || 'Resolving...'}
+                              </td>
+                              <td className="py-2.5 text-right font-medium text-slate-100">
+                                {visitor.device}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    ) : (
+                      <p className="text-xs text-slate-500">
+                        {isAr ? 'لا يوجد زوار مؤخراً' : 'No recent visitors.'}
+                      </p>
+                    )}
+                  </div>
+                </div>
               </div>
             )}
           </div>

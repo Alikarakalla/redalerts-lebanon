@@ -10,11 +10,11 @@ let analyticsData = loadAnalytics();
 function loadAnalytics() {
   try {
     if (!fs.existsSync(ANALYTICS_FILE)) {
-      return { totalViews: 0, distinctVisitors: 0, dailyStats: {} };
+      return { totalViews: 0, distinctVisitors: 0, dailyStats: {}, recentVisitors: [] };
     }
     return JSON.parse(fs.readFileSync(ANALYTICS_FILE, 'utf8'));
   } catch {
-    return { totalViews: 0, distinctVisitors: 0, dailyStats: {} };
+    return { totalViews: 0, distinctVisitors: 0, dailyStats: {}, recentVisitors: [] };
   }
 }
 
@@ -51,6 +51,46 @@ export function trackVisitor(ip, userAgent) {
     analyticsData.distinctVisitors += 1;
   }
 
+  // --- Detailed Tracking ---
+  if (!analyticsData.recentVisitors) {
+    analyticsData.recentVisitors = [];
+  }
+
+  // Extract device broadly
+  let device = 'Desktop';
+  const uaLower = userAgent.toLowerCase();
+  if (uaLower.includes('mobile')) device = 'Mobile';
+  if (uaLower.includes('android')) device = 'Android';
+  if (uaLower.includes('iphone') || uaLower.includes('ipad') || uaLower.includes('ipod')) device = 'iOS';
+  if (uaLower.includes('mac os')) device = 'Mac';
+  if (uaLower.includes('windows')) device = 'Windows';
+
+  // Prevent duplicate logs for the same IP too often
+  const existingIndex = analyticsData.recentVisitors.findIndex((v) => v.ip === ip);
+  if (existingIndex !== -1) {
+    analyticsData.recentVisitors.splice(existingIndex, 1);
+  }
+
+  const timestamp = new Date().toISOString();
+  analyticsData.recentVisitors.unshift({ ip, device, timestamp, location: 'Resolving...' });
+  analyticsData.recentVisitors = analyticsData.recentVisitors.slice(0, 50); // Keep last 50
+
+  // Async location resolution (does not block response)
+  if (ip && ip !== 'unknown') {
+    fetch(`http://ip-api.com/json/${ip}?fields=status,country,city`)
+      .then((r) => r.json())
+      .then((geo) => {
+        if (geo.status === 'success') {
+          const entry = analyticsData.recentVisitors.find((v) => v.ip === ip);
+          if (entry) {
+            entry.location = `${geo.city || 'Unknown'}, ${geo.country || 'Unknown'}`;
+            saveAnalytics();
+          }
+        }
+      })
+      .catch(() => {});
+  }
+
   saveAnalytics();
 }
 
@@ -70,6 +110,7 @@ export function getStats() {
     totalVisitors: analyticsData.distinctVisitors,
     todayViews: analyticsData.dailyStats[today]?.views || 0,
     todayVisitors: analyticsData.dailyStats[today]?.uniqueIps.length || 0,
-    history
+    history,
+    recentVisitors: analyticsData.recentVisitors || []
   };
 }

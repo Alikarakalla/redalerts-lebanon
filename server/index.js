@@ -143,25 +143,31 @@ async function bootstrap() {
     console.log(`API server listening on http://localhost:${config.port}`);
   });
 
-  await startTelegramListener(async ({ text, sourceChannel }) => {
-    try {
-      const processed = await processMessage(text, sourceChannel);
-      const alerts = getMappableAlerts(processed);
+  try {
+    await startTelegramListener(async ({ text, sourceChannel }) => {
+      try {
+        const processed = await processMessage(text, sourceChannel);
+        const alerts = getMappableAlerts(processed);
 
-      if (alerts.length === 0) {
-        return;
-      }
-
-      for (const alert of alerts) {
-        const result = await saveAlert(alert);
-        if (result.saved) {
-          console.log(`Saved alert from ${sourceChannel}: ${alert.locationName}`);
+        if (alerts.length === 0) {
+          return;
         }
+
+        for (const alert of alerts) {
+          const result = await saveAlert(alert);
+          if (result.saved) {
+            console.log(`Saved alert from ${sourceChannel}: ${alert.locationName}`);
+          }
+        }
+      } catch (error) {
+        console.error('Listener pipeline failed:', error);
       }
-    } catch (error) {
-      console.error('Listener pipeline failed:', error);
-    }
-  });
+    });
+
+  } catch (error) {
+    console.error('\n🔴 FATAL TELEGRAM ERROR:', error.message);
+    console.error('The backend will stay running to serve the dashboard, but live alerts are DISABLE until you update your TELEGRAM_SESSION string!');
+  }
 
   // Pre-warm cache immediately on startup so first visitor gets instant response
   console.log('[cache] Pre-warming alerts cache...');
@@ -173,5 +179,4 @@ async function bootstrap() {
 
 bootstrap().catch((error) => {
   console.error('Server bootstrap failed:', error);
-  process.exit(1);
 });

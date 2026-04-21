@@ -59,7 +59,7 @@ const DEFAULT_CENTER = [33.8547, 35.8623]; // Lebanon center
 const DEFAULT_ZOOM = 8;
 const FOCUSED_ZOOM = 11;
 
-const LEBANON_BOUNDS = { minLng: 35.08, maxLng: 36.65, minLat: 33.04, maxLat: 34.70 };
+const LEBANON_BOUNDS = { minLng: 35.0, maxLng: 36.7, minLat: 33.0, maxLat: 34.8 };
 function isInLebanon(lng, lat) {
   return lng >= LEBANON_BOUNDS.minLng && lng <= LEBANON_BOUNDS.maxLng
       && lat >= LEBANON_BOUNDS.minLat && lat <= LEBANON_BOUNDS.maxLat;

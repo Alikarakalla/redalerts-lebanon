@@ -403,6 +403,16 @@ async function geocodeLebanonLocation(location) {
 }
 
 export async function resolveCoordinates(location) {
+  // 1. Try high-precision geocoding first (OSM data matches map labels 100%)
+  const geocoded = await geocodeLebanonLocation(location);
+  if (geocoded) {
+    return {
+      ...geocoded,
+      source: 'geocoded',
+    };
+  }
+
+  // 2. Fallback to built-in estimates if geocoding is unavailable
   const match = findKnownLocation(location);
   if (match) {
     return {
@@ -413,11 +423,7 @@ export async function resolveCoordinates(location) {
     };
   }
 
-  const geocoded = await geocodeLebanonLocation(location);
-  if (geocoded) {
-    return geocoded;
-  }
-
+  // 3. Last resort fallback to Lebanon center
   return {
     lat: 33.8547,
     lng: 35.8623,

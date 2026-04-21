@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMap, CircleMarker } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import { Info, ChevronDown, ChevronUp } from 'lucide-react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
@@ -291,6 +292,7 @@ export default function MapComponent({
   activeType = 'all',
   activeWindow = '24h',
 }) {
+  const [isLegendOpen, setIsLegendOpen] = useState(false);
   const t = MAP_TRANSLATIONS[locale] ?? MAP_TRANSLATIONS.en;
   const isAr = locale === 'ar';
 
@@ -334,13 +336,29 @@ export default function MapComponent({
         }`}
         dir={t.dir}
       >
-        <div className="pointer-events-auto w-[220px] rounded-2xl border border-white/10 bg-black/60 p-4 shadow-2xl backdrop-blur-xl sm:w-[260px]">
-          <h3 className="mb-3 text-[0.65rem] font-bold uppercase tracking-wider text-slate-400">
-            {t.legend}
-          </h3>
+        <div className="pointer-events-auto flex flex-col items-end gap-2">
+          {/* Toggle Button for Mobile */}
+          <button
+            onClick={() => setIsLegendOpen(!isLegendOpen)}
+            className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-black/60 shadow-xl backdrop-blur-xl transition hover:bg-black/80 sm:hidden"
+          >
+            {isLegendOpen ? <ChevronDown className="h-5 w-5 text-white" /> : <Info className="h-5 w-5 text-white" />}
+          </button>
 
-          <div className="space-y-3">
-            <div className="space-y-2">
+          {/* Legend Panel */}
+          <div className={`${isLegendOpen ? 'flex' : 'hidden'} w-[220px] flex-col rounded-2xl border border-white/10 bg-black/60 p-4 shadow-2xl backdrop-blur-xl sm:flex sm:w-[260px]`}>
+            <h3 className="mb-3 text-[0.65rem] font-bold uppercase tracking-wider text-slate-400 flex items-center justify-between">
+              {t.legend}
+              <button 
+                className="sm:hidden p-1 opacity-50 hover:opacity-100"
+                onClick={() => setIsLegendOpen(false)}
+              >
+                <ChevronDown className="h-3.5 w-3.5" />
+              </button>
+            </h3>
+
+            <div className="space-y-3">
+              <div className="space-y-2">
               <div className="flex items-center justify-between text-xs font-medium">
                 <span className="text-slate-300">{t.fresh}</span>
                 <span className="flex h-3 w-3 items-center justify-center rounded-full bg-red-500/80 ring-[3px] ring-red-500/30 ring-offset-0">
@@ -373,6 +391,8 @@ export default function MapComponent({
           </div>
         </div>
       </div>
+    </div>
+
       
       {/* Global styles for leaflet popup adjustments */}
       <style>{`

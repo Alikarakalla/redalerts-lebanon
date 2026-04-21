@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ComposableMap, Geographies, Geography, Marker, ZoomableGroup } from 'react-simple-maps';
-import lebanonGeo from '../data/lebanon-level2.json';
+import { MapContainer, TileLayer, Marker, Popup, useMap, CircleMarker } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 
 const MAP_TRANSLATIONS = {
   en: {
@@ -30,48 +31,38 @@ const MAP_TRANSLATIONS = {
   ar: {
     dir: 'rtl',
     eventLabels: {
-      explosion: '\u0627\u0646\u0641\u062c\u0627\u0631',
-      artillery: '\u0642\u0635\u0641 \u0645\u062f\u0641\u0639\u064a',
-      airstrike: '\u063a\u0627\u0631\u0629',
-      warplane: '\u0645\u0642\u0627\u062a\u0644\u0627\u062a \u062d\u0631\u0628\u064a\u0629',
-      missile: '\u0635\u0627\u0631\u0648\u062e',
-      drone: '\u0645\u0633\u064a\u0631\u0629',
-      default: '\u062d\u0627\u062f\u062b',
+      explosion: 'انفجار',
+      artillery: 'قصف مدفعي',
+      airstrike: 'غارة',
+      warplane: 'مقاتلات حربية',
+      missile: 'صاروخ',
+      drone: 'مسيرة',
+      default: 'حادث',
     },
-    legend: '\u0627\u0644\u062f\u0644\u064a\u0644',
-    fresh: '\u062d\u062f\u062b \u062c\u062f\u064a\u062f \u062e\u0644\u0627\u0644 \u0623\u0642\u0644 \u0645\u0646 30 \u062f\u0642\u064a\u0642\u0629',
-    recent: '\u062d\u062f\u062b \u062d\u062f\u064a\u062b \u062e\u0644\u0627\u0644 \u0623\u0642\u0644 \u0645\u0646 \u0633\u0627\u0639\u062a\u064a\u0646',
-    old: '\u0623\u0642\u062f\u0645 \u0645\u0646 \u0633\u0627\u0639\u062a\u064a\u0646',
-    incidents: '\u062a\u0646\u0628\u064a\u0647\u0627\u062a',
-    incidentIn: (label, location) => `${label} \u0641\u064a ${location}`,
-    clusterSummary: (count, label, location) => `${count} \u062a\u0646\u0628\u064a\u0647\u0627\u062a ${label} \u0642\u0631\u0628 ${location}`,
+    legend: 'الدليل',
+    fresh: 'حدث جديد خلال أقل من 30 دقيقة',
+    recent: 'حدث حديث خلال أقل من ساعتين',
+    old: 'أقدم من ساعتين',
+    incidents: 'تنبيهات',
+    incidentIn: (label, location) => `${label} في ${location}`,
+    clusterSummary: (count, label, location) => `${count} تنبيهات ${label} قرب ${location}`,
     typeLegend: {
-      drone: '\u0645\u0633\u064a\u0631\u0629',
-      warplane: '\u0645\u0642\u0627\u062a\u0644\u0627\u062a \u062d\u0631\u0628\u064a\u0629',
-      strike: '\u063a\u0627\u0631\u0629 / \u0627\u0646\u0641\u062c\u0627\u0631',
+      drone: 'مسيرة',
+      warplane: 'مقاتلات حربية',
+      strike: 'غارة / انفجار',
     },
   },
 };
 
-const DEFAULT_CENTER = [35.76, 33.9];
-const DEFAULT_ZOOM = 1.6;
-const MOBILE_DEFAULT_ZOOM = 2;
-const FOCUSED_ZOOM = 2.65;
-const MOBILE_FOCUSED_ZOOM = 2.4;
-const CLUSTER_RADIUS_KM = 11;
+const DEFAULT_CENTER = [33.8547, 35.8623]; // Lebanon center
+const DEFAULT_ZOOM = 8;
+const FOCUSED_ZOOM = 11;
 
-const PLACE_LABELS = [
-  { key: 'tripoli', coordinates: [35.8442, 34.4367], en: 'Tripoli', ar: '\u0637\u0631\u0627\u0628\u0644\u0633' },
-  { key: 'beirut', coordinates: [35.5018, 33.8938], en: 'Beirut', ar: '\u0628\u064a\u0631\u0648\u062a' },
-  { key: 'jounieh', coordinates: [35.6178, 33.9808], en: 'Jounieh', ar: '\u062c\u0648\u0646\u064a\u0629' },
-  { key: 'zahle', coordinates: [35.8961, 33.8467], en: 'Zahle', ar: '\u0632\u062d\u0644\u0629' },
-  { key: 'sidon', coordinates: [35.3681, 33.5575], en: 'Sidon', ar: '\u0635\u064a\u062f\u0627' },
-  { key: 'tyre', coordinates: [35.1939, 33.2704], en: 'Tyre', ar: '\u0635\u0648\u0631' },
-  { key: 'nabatieh', coordinates: [35.4836, 33.3789], en: 'Nabatieh', ar: '\u0627\u0644\u0646\u0628\u0637\u064a\u0629' },
-  { key: 'baalbek', coordinates: [36.2181, 34.0061], en: 'Baalbek', ar: '\u0628\u0639\u0644\u0628\u0643' },
-];
-
-const MOBILE_LABEL_KEYS = new Set(['tripoli', 'beirut', 'sidon', 'tyre', 'nabatieh', 'zahle', 'baalbek']);
+const LEBANON_BOUNDS = { minLng: 35.08, maxLng: 36.65, minLat: 33.04, maxLat: 34.70 };
+function isInLebanon(lng, lat) {
+  return lng >= LEBANON_BOUNDS.minLng && lng <= LEBANON_BOUNDS.maxLng
+      && lat >= LEBANON_BOUNDS.minLat && lat <= LEBANON_BOUNDS.maxLat;
+}
 
 const TYPE_STYLES = {
   drone: { base: '#f59e0b' },
@@ -122,10 +113,10 @@ function getMarkerStyle(type, timestamp) {
   };
 }
 
-function getMarkerRadius(severity, count = 1) {
-  const base = severity === 'high' ? 16 : severity === 'medium' ? 12 : 9;
+function getMarkerRadius(severity, count = 1, zIndex) {
+  const base = severity === 'high' ? 12 : severity === 'medium' ? 9 : 7;
   if (count <= 1) return base;
-  return Math.min(base + Math.log2(count + 1) * 4, 28);
+  return Math.min(base + Math.log2(count + 1) * 3, 20);
 }
 
 function getSeverityScore(severity) {
@@ -141,13 +132,16 @@ function distanceKm(a, b) {
   return Math.sqrt(dLat * dLat + dLng * dLng);
 }
 
-function clusterEvents(events, locale) {
+function clusterEvents(events, locale, zoomLevel) {
   const sorted = [...events].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
   const clusters = [];
+  
+  // Dynamic clustering based on zoom
+  const radiusKm = zoomLevel >= 11 ? 1.5 : zoomLevel >= 9 ? 4 : 8;
 
   for (const event of sorted) {
     const existing = clusters.find(
-      (cluster) => cluster.type === event.type && distanceKm(cluster, event) <= CLUSTER_RADIUS_KM
+      (cluster) => cluster.type === event.type && distanceKm(cluster, event) <= radiusKm
     );
 
     if (existing) {
@@ -190,335 +184,214 @@ function clusterEvents(events, locale) {
       severity: cluster.severity,
       count: cluster.count,
       items: cluster.items,
-      locations: [...cluster.locationNames],
-      locationName: primaryLocation,
-      description:
+      primaryLocation: primaryLocation,
+      locationCount: cluster.locationNames.size,
+      originalEvent: cluster.count === 1 ? latestItem : null,
+      title:
         cluster.count > 1
           ? MAP_TRANSLATIONS[locale].clusterSummary(
-            cluster.count,
-            formatEventLabel(cluster.type, locale),
-            primaryLocation
-          )
-          : latestItem.description,
-      radius: getMarkerRadius(cluster.severity, cluster.count),
-      isNew: getEventAgeMinutes(cluster.timestamp) <= 30,
-      style: getMarkerStyle(cluster.type, cluster.timestamp),
+              cluster.count,
+              formatEventLabel(cluster.type, locale),
+              primaryLocation
+            )
+          : MAP_TRANSLATIONS[locale].incidentIn(
+              formatEventLabel(latestItem.type, locale),
+              primaryLocation
+            ),
     };
   });
 }
 
-function LegendOverlay({ locale, isMobile }) {
-  const t = MAP_TRANSLATIONS[locale];
-  const [isOpen, setIsOpen] = useState(!isMobile);
-
-  useEffect(() => {
-    setIsOpen(!isMobile);
-  }, [isMobile]);
+function IncidentPopup({ incident, locale, t }) {
+  const isCluster = incident.kind === 'cluster';
+  const ageBucket = getAgeBucket(incident.timestamp);
+  
+  const timeColor =
+    ageBucket === 'fresh' ? 'text-red-400' : ageBucket === 'recent' ? 'text-slate-300' : 'text-slate-500';
 
   return (
-    <div
-      className={`pointer-events-auto absolute bottom-3 left-1/2 z-20 w-[min(calc(100vw-2rem),18rem)] -translate-x-1/2 rounded-[1.5rem] border border-white/10 bg-black/40 backdrop-blur-md transition-all duration-300 sm:bottom-6 sm:left-4 sm:translate-x-0 sm:w-60 ${isOpen ? 'p-3 sm:p-4' : 'p-2.5 px-4 sm:p-3'}`}
-      dir={t.dir}
-    >
-      <button
-        type="button"
-        onClick={() => setIsOpen(!isOpen)}
-        className="flex w-full items-center justify-between outline-none"
-      >
-        <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-300 sm:text-xs sm:tracking-[0.24em]">
-          {t.legend}
-        </span>
-        <svg
-          viewBox="0 0 24 24"
-          className={`h-4 w-4 fill-none stroke-slate-400 stroke-2 transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`}
-        >
-          <path d="m6 9 6 6 6-6" />
-        </svg>
-      </button>
-
-      <div
-        className={`grid transition-all duration-300 ease-in-out ${isOpen ? 'grid-rows-[1fr] opacity-100 mt-3 sm:mt-4' : 'grid-rows-[0fr] opacity-0 mt-0'}`}
-      >
-        <div className="overflow-hidden">
-          <div className="space-y-3 text-[10px] text-slate-300 sm:text-xs pb-1">
-            <div className="grid grid-cols-1 gap-1.5">
-              <div className="flex items-center gap-2">
-                <span className="h-3 w-3 rounded-full bg-[#ff4d5a]" />
-                <span>{t.fresh}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="h-3 w-3 rounded-full bg-[#d7263d]" />
-                <span>{t.recent}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="h-3 w-3 rounded-full bg-[#5b0f18]" />
-                <span>{t.old}</span>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 gap-1.5">
-              <div className="flex items-center gap-2">
-                <span className="h-3 w-3 rounded-full bg-[#f59e0b]" />
-                <span>{t.typeLegend.drone}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="h-3 w-3 rounded-full bg-[#38bdf8]" />
-                <span>{t.typeLegend.warplane}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="h-3 w-3 rounded-full bg-[#ef4444]" />
-                <span>{t.typeLegend.strike}</span>
-              </div>
-            </div>
-          </div>
-        </div>
+    <div className={`p-1 pt-2 w-[180px] font-sans ${MAP_TRANSLATIONS[locale].dir === 'rtl' ? 'text-right' : 'text-left'}`} dir={MAP_TRANSLATIONS[locale].dir}>
+      <h4 className="mb-0.5 text-[0.8rem] font-bold text-slate-100 flex items-center justify-between">
+        <span>{incident.primaryLocation}</span>
+        {isCluster && <span className="text-[0.65rem] bg-white/10 px-1.5 py-0.5 rounded-full">{incident.count}</span>}
+      </h4>
+      <p className="mb-1 text-[0.7rem] font-medium text-slate-400">{formatEventLabel(incident.type, locale)}</p>
+      <div className={`text-[0.65rem] font-medium ${timeColor}`}>
+        {formatPopupTime(incident.timestamp, locale)}
       </div>
     </div>
   );
 }
 
-function MapComponent({ events, focusedEvent, locale = 'ar', activeType = 'all', activeWindow = '24h' }) {
-  const [selectedEvent, setSelectedEvent] = useState(null);
-  const [isLegendOpen, setIsLegendOpen] = useState(false);
-  const [manualView, setManualView] = useState(null);
-  const [isMobile, setIsMobile] = useState(() => (typeof window !== 'undefined' ? window.innerWidth < 640 : false));
+const customIcon = (color, opacity, count, zIndexBase, isFresh) => {
+  const html = `
+    <div style="position:relative;width:100%;height:100%;display:flex;align-items:center;justify-content:center;">
+       ${isFresh ? `<div style="position:absolute;inset:-6px;border-radius:50%;border:1px solid ${color};animation:ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>` : ''}
+       <div style="width:100%;height:100%;border-radius:50%;background-color:${color};opacity:${opacity};box-shadow: 0 0 10px ${color}"></div>
+       ${count > 1 ? `<span style="position:absolute;color:white;font-size:10px;font-weight:bold;text-shadow:0 1px 2px rgba(0,0,0,0.8);">${count}</span>` : ''}
+    </div>
+  `;
+  return L.divIcon({
+    html,
+    className: 'custom-leaflet-marker',
+    iconSize: [zIndexBase * 2, zIndexBase * 2],
+    iconAnchor: [zIndexBase, zIndexBase],
+  });
+};
+
+function MapEvents({ events, focusedEvent, locale }) {
+  const map = useMap();
+  const [zoomLevel, setZoomLevel] = useState(map.getZoom());
 
   useEffect(() => {
-    if (typeof window === 'undefined') return undefined;
+    const onZoomEnd = () => setZoomLevel(map.getZoom());
+    map.on('zoomend', onZoomEnd);
+    return () => map.off('zoomend', onZoomEnd);
+  }, [map]);
 
-    const mediaQuery = window.matchMedia('(max-width: 639px)');
-    const syncMobile = () => setIsMobile(mediaQuery.matches);
-    syncMobile();
+  const mapData = useMemo(() => {
+    const validEvents = events.filter((e) => e.lat && e.lng && isInLebanon(e.lng, e.lat));
+    return clusterEvents(validEvents, locale, zoomLevel);
+  }, [events, locale, zoomLevel]);
 
-    if (mediaQuery.addEventListener) {
-      mediaQuery.addEventListener('change', syncMobile);
-      return () => mediaQuery.removeEventListener('change', syncMobile);
+  // Handle focused event jump
+  useEffect(() => {
+    if (focusedEvent && focusedEvent.lat && focusedEvent.lng && isInLebanon(focusedEvent.lng, focusedEvent.lat)) {
+      map.flyTo([focusedEvent.lat, focusedEvent.lng], FOCUSED_ZOOM, { animate: true, duration: 1.5 });
     }
+  }, [focusedEvent, map]);
 
-    mediaQuery.addListener(syncMobile);
-    return () => mediaQuery.removeListener(syncMobile);
-  }, []);
+  return (
+    <>
+      {mapData.map((incident) => {
+        const style = getMarkerStyle(incident.type, incident.timestamp);
+        const radius = getMarkerRadius(incident.severity, incident.count);
+        const isFresh = getAgeBucket(incident.timestamp) === 'fresh';
 
-  useEffect(() => {
-    if (!focusedEvent) return;
-    setManualView(null);
-    setSelectedEvent({
-      ...focusedEvent,
-      kind: 'event',
-      count: 1,
-      locations: [focusedEvent.locationName],
-      style: getMarkerStyle(focusedEvent.type, focusedEvent.timestamp),
-    });
-  }, [focusedEvent]);
+        return (
+          <Marker
+            key={incident.id}
+            position={[incident.lat, incident.lng]}
+            icon={customIcon(style.base, style.fillOpacity + 0.3, incident.count, radius, isFresh)}
+          >
+            <Popup className="custom-leaflet-popup" closeButton={false}>
+              <IncidentPopup incident={incident} locale={locale} />
+            </Popup>
+          </Marker>
+        );
+      })}
+    </>
+  );
+}
+
+export default function MapComponent({
+  events = [],
+  focusedEvent = null,
+  locale = 'ar',
+  activeType = 'all',
+  activeWindow = '24h',
+}) {
+  const t = MAP_TRANSLATIONS[locale] ?? MAP_TRANSLATIONS.en;
+  const isAr = locale === 'ar';
 
   const filteredEvents = useMemo(() => {
     const now = Date.now();
-    const cutoffMinutes = activeWindow === '30m' ? 30 : activeWindow === '2h' ? 120 : 24 * 60;
+    const limitMap = { '30m': 30, '2h': 120, '24h': 1440, all: Infinity };
+    const cutoffMinutes = limitMap[activeWindow] ?? 1440;
 
-    return events.filter((event) => {
-      const ageMinutes = (now - new Date(event.timestamp).getTime()) / 60000;
-      return ageMinutes <= cutoffMinutes && (activeType === 'all' || event.type === activeType);
+    return events.filter((e) => {
+      const typeMatch = activeType === 'all' || e.type === activeType;
+      const ageMinutes = (now - new Date(e.timestamp).getTime()) / 60000;
+      const windowMatch = ageMinutes <= cutoffMinutes;
+      return typeMatch && windowMatch;
     });
-  }, [activeType, activeWindow, events]);
-
-  const renderedItems = useMemo(() => clusterEvents(filteredEvents, locale), [filteredEvents, locale]);
-  const placeLabels = useMemo(
-    () =>
-      PLACE_LABELS.filter((place) => !isMobile || MOBILE_LABEL_KEYS.has(place.key)).map((place) => ({
-        ...place,
-        label: locale === 'ar' ? place.ar : place.en,
-      })),
-    [isMobile, locale]
-  );
-
-  const mobileViewCenter = [35.76, 33.8];
-  const autoViewCenter = focusedEvent ? [focusedEvent.lng, focusedEvent.lat] : (isMobile ? mobileViewCenter : DEFAULT_CENTER);
-  const autoViewZoom = focusedEvent
-    ? isMobile
-      ? MOBILE_FOCUSED_ZOOM
-      : FOCUSED_ZOOM
-    : isMobile
-      ? MOBILE_DEFAULT_ZOOM
-      : DEFAULT_ZOOM;
-
-  const currentCenter = manualView ? manualView.center : autoViewCenter;
-  const currentZoom = manualView ? manualView.zoom : autoViewZoom;
-
-  const t = MAP_TRANSLATIONS[locale];
+  }, [events, activeType, activeWindow]);
 
   return (
-    <div className="relative h-[calc(100vh-11rem)] min-h-[620px] overflow-hidden sm:h-[calc(100vh-10rem)] sm:min-h-[680px]">
-      
-      <div className="absolute right-3 bottom-24 z-30 flex flex-col items-center gap-2.5 rounded-full border-b border-r border-white/5 border-l border-t border-white/20 bg-white/5 p-2 py-3 backdrop-blur-2xl shadow-[0_8px_32px_rgba(0,0,0,0.4)] sm:bottom-12 sm:right-6">
-        <button 
-          type="button" 
-          onClick={() => setManualView({ center: currentCenter, zoom: Math.min(currentZoom + 0.3, 5) })}
-          className="flex h-7 w-7 items-center justify-center rounded-full bg-white/10 text-slate-300 transition hover:bg-white/20 hover:text-white active:scale-95 sm:h-8 sm:w-8"
-          aria-label="Zoom in"
+    <div className="relative h-full w-full bg-[#0a0a0a] overflow-hidden">
+      {/* Map Container */}
+      <div className="absolute inset-0 leaflet-dark-wrapper" dir="ltr">
+        <MapContainer
+          center={DEFAULT_CENTER}
+          zoom={DEFAULT_ZOOM}
+          zoomControl={false}
+          className="h-full w-full"
+          maxBounds={[[32.5, 34.5], [35.0, 37.0]]}
+          minZoom={7}
         >
-          <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 stroke-current stroke-2 fill-none sm:w-4 sm:h-4" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M5 12h14"/></svg>
-        </button>
-        
-        <input
-          type="range"
-          min="0.5"
-          max="5"
-          step="0.05"
-          value={currentZoom}
-          onChange={(e) => setManualView({ center: currentCenter, zoom: parseFloat(e.target.value) })}
-          className="h-28 w-1 cursor-pointer appearance-none rounded-full bg-white/20 accent-red-500 hover:accent-red-400 sm:h-36"
-          style={{ writingMode: 'bt-lr', WebkitAppearance: 'slider-vertical' }}
-          title="Zoom"
-        />
-
-        <button 
-          type="button" 
-          onClick={() => setManualView({ center: currentCenter, zoom: Math.max(currentZoom - 0.3, 0.5) })}
-          className="flex h-7 w-7 items-center justify-center rounded-full bg-white/10 text-slate-300 transition hover:bg-white/20 hover:text-white active:scale-95 sm:h-8 sm:w-8"
-          aria-label="Zoom out"
-        >
-          <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 stroke-current stroke-2 fill-none sm:w-4 sm:h-4" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/></svg>
-        </button>
+          <TileLayer
+            attribution='&copy; <a href="https://carto.com/">CartoDB</a>'
+            url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+          />
+          <MapEvents events={filteredEvents} focusedEvent={focusedEvent} locale={locale} />
+        </MapContainer>
       </div>
 
-      <div className="lebanon-map-shell absolute left-1/2 top-1/2 h-[min(82vh,760px)] w-[min(100vw,620px)] -translate-x-1/2 -translate-y-1/2 sm:h-[min(84vh,860px)] sm:w-[min(64vw,760px)] lg:h-[min(88vh,920px)] lg:w-[min(52vw,720px)]">
-        <ComposableMap
-          projection="geoMercator"
-          projectionConfig={{ center: DEFAULT_CENTER, scale: isMobile ? 12500 : 12500 }}
-          className="map-stage h-full w-full overflow-visible"
-        >
-          <ZoomableGroup
-            center={currentCenter}
-            zoom={currentZoom}
-            minZoom={0.5}
-            maxZoom={5}
-            translateExtent={[[0, 0], [1000, 1000]]}
-            onMoveEnd={(position) => setManualView({ center: position.coordinates, zoom: position.zoom })}
-          >
-            <Geographies geography={lebanonGeo}>
-              {({ geographies }) =>
-                geographies.map((geo) => (
-                  <Geography
-                    key={geo.rsmKey}
-                    geography={geo}
-                    onClick={() => setSelectedEvent(null)}
-                    className="lebanon-geography"
-                    style={{
-                      default: {
-                        fill: 'rgba(7, 11, 18, 0.92)',
-                        stroke: 'rgba(255, 255, 255, 0.12)',
-                        strokeWidth: 0.75,
-                        outline: 'none',
-                      },
-                      hover: {
-                        fill: 'rgba(10, 14, 21, 0.96)',
-                        stroke: 'rgba(255, 255, 255, 0.14)',
-                        strokeWidth: 0.9,
-                        outline: 'none',
-                      },
-                      pressed: {
-                        fill: 'rgba(10, 14, 21, 0.96)',
-                        stroke: 'rgba(255, 255, 255, 0.14)',
-                        strokeWidth: 0.9,
-                        outline: 'none',
-                      },
-                    }}
-                  />
-                ))
-              }
-            </Geographies>
+      {/* Overlays / Legend */}
+      <div
+        className={`pointer-events-none absolute bottom-4 z-[400] sm:bottom-8 ${
+          isAr ? 'left-4 sm:left-8' : 'right-4 sm:right-8'
+        }`}
+        dir={t.dir}
+      >
+        <div className="pointer-events-auto w-[220px] rounded-2xl border border-white/10 bg-black/60 p-4 shadow-2xl backdrop-blur-xl sm:w-[260px]">
+          <h3 className="mb-3 text-[0.65rem] font-bold uppercase tracking-wider text-slate-400">
+            {t.legend}
+          </h3>
 
-            {placeLabels.map((place) => (
-              <Marker key={place.key} coordinates={place.coordinates}>
-                <g className="pointer-events-none select-none" transform={`scale(${1 / Math.sqrt(currentZoom)})`}>
-                  <text
-                    y="-8"
-                    textAnchor="middle"
-                    className="fill-slate-500 text-[8px] font-medium tracking-[0.03em] sm:text-[10px] sm:tracking-[0.06em]"
-                    style={{ paintOrder: 'stroke', stroke: 'rgba(7, 11, 18, 0.94)', strokeWidth: 2 }}
-                  >
-                    {place.label}
-                  </text>
-                </g>
-              </Marker>
-            ))}
-
-            {renderedItems.map((item) => (
-              <Marker key={item.id} coordinates={[item.lng, item.lat]}>
-                <g
-                  onClick={() => setSelectedEvent(item)}
-                  transform={`scale(${1 / Math.sqrt(currentZoom)})`}
-                  className={item.isNew && item.kind === 'event' ? 'pulse-marker cursor-pointer' : 'cursor-pointer'}
-                >
-                  <circle r={item.radius + 4} fill={item.style.base} opacity={0.11} />
-                  <circle
-                    r={item.radius}
-                    fill={item.style.base}
-                    fillOpacity={item.style.fillOpacity}
-                    stroke={item.style.base}
-                    strokeWidth={item.kind === 'cluster' ? 2.4 : 1.8}
-                  />
-                  {item.kind === 'cluster' ? (
-                    <text y="4" textAnchor="middle" className="fill-white text-[10px] font-semibold sm:text-[12px]">
-                      {item.count}
-                    </text>
-                  ) : null}
-                </g>
-              </Marker>
-            ))}
-          </ZoomableGroup>
-        </ComposableMap>
-      </div>
-
-      {selectedEvent ? (
-        <div
-          className="pointer-events-auto absolute left-3 right-3 top-3 z-20 rounded-[1.5rem] border-b border-r border-white/5 border-l border-t border-white/20 bg-white/5 p-3.5 backdrop-blur-2xl shadow-[0_8px_32px_rgba(0,0,0,0.4)] sm:left-auto sm:right-4 sm:top-6 sm:w-80 sm:max-w-none sm:p-5"
-          dir={t.dir}
-        >
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              <strong className="block truncate text-sm font-bold text-white sm:text-base">
-                {selectedEvent.locationName}
-              </strong>
-              <span className="mt-0.5 block text-[11px] font-medium text-slate-400 sm:text-xs">
-                {selectedEvent.kind === 'cluster'
-                  ? `${selectedEvent.count} ${t.incidents}`
-                  : formatEventLabel(selectedEvent.type, locale)}
-              </span>
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-xs font-medium">
+                <span className="text-slate-300">{t.fresh}</span>
+                <span className="flex h-3 w-3 items-center justify-center rounded-full bg-red-500/80 ring-[3px] ring-red-500/30 ring-offset-0">
+                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-xs font-medium">
+                <span className="text-slate-400">{t.recent}</span>
+                <span className="h-2.5 w-2.5 rounded-full bg-red-500/60" />
+              </div>
+              <div className="flex items-center justify-between text-[0.65rem] font-medium text-slate-500">
+                <span>{t.old}</span>
+                <span className="h-2 w-2 rounded-full border border-slate-600 bg-slate-800" />
+              </div>
             </div>
-            <button
-              onClick={() => setSelectedEvent(null)}
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/10 text-slate-300 transition-colors hover:bg-white/20 hover:text-white"
-              aria-label="Close"
-            >
-              <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-none stroke-current stroke-2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M18 6 6 18M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-          <p className="mt-2 text-xs leading-relaxed text-slate-300 sm:mt-3 sm:text-[13px]">
-            {selectedEvent.kind === 'cluster'
-              ? t.clusterSummary(selectedEvent.count, formatEventLabel(selectedEvent.type, locale), selectedEvent.locationName)
-              : t.incidentIn(formatEventLabel(selectedEvent.type, locale), selectedEvent.locationName)}
-          </p>
-          {selectedEvent.kind === 'cluster' && selectedEvent.locations.length > 1 ? (
-            <div className="mt-2.5 max-h-24 space-y-1 overflow-y-auto pr-1 text-[11px] font-medium text-slate-400 sm:max-h-32 sm:text-xs">
-              {selectedEvent.locations.map((location) => (
-                <div key={location} className="truncate rounded-md bg-white/5 px-2 py-1.5">
-                  {location}
+
+            <div className="h-px w-full bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+
+            <div className="space-y-1.5 pt-1">
+              {Object.entries(t.typeLegend).map(([key, label]) => (
+                <div key={key} className="flex items-center justify-between text-xs font-medium">
+                  <span className="text-slate-300">{label}</span>
+                  <span
+                    className="h-2 w-2 rounded-full"
+                    style={{ backgroundColor: TYPE_STYLES[key]?.base || TYPE_STYLES.default.base }}
+                  />
                 </div>
               ))}
             </div>
-          ) : null}
-          <div className="mt-2.5 text-[10px] font-semibold tracking-wider text-slate-500 uppercase sm:mt-3 sm:text-[11px]">
-            {formatPopupTime(selectedEvent.timestamp, locale)}
           </div>
         </div>
-      ) : null}
-
-      <LegendOverlay locale={locale} isMobile={isMobile} />
+      </div>
+      
+      {/* Global styles for leaflet popup adjustments */}
+      <style>{`
+        .leaflet-dark-wrapper { background: #0a0a0a !important; }
+        .leaflet-container { background: #0a0a0a !important; font-family: 'Inter', sans-serif; }
+        .leaflet-popup-content-wrapper { 
+          background: rgba(15, 15, 15, 0.9) !important; 
+          backdrop-filter: blur(12px) !important;
+          border: 1px solid rgba(255, 255, 255, 0.1) !important;
+          border-radius: 12px !important;
+          color: white !important;
+          padding: 0 !important;
+          box-shadow: 0 10px 30px -10px rgba(0,0,0,1) !important;
+        }
+        .leaflet-popup-tip { background: rgba(15, 15, 15, 0.9) !important; border-top: 1px solid rgba(255,255,255,0.1); border-left: 1px solid rgba(255,255,255,0.1); }
+        .leaflet-popup-content { margin: 10px 14px !important; }
+        .leaflet-control-attribution { background: rgba(0,0,0,0.5) !important; color: #666 !important; bottom: 5px !important; left: 10px !important; right: auto !important; position: absolute !important;}
+        .leaflet-control-attribution a { color: #888 !important; }
+      `}</style>
     </div>
   );
 }
-
-export default React.memo(MapComponent);

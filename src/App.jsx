@@ -20,7 +20,6 @@ import {
   SheetDescription,
 } from '@/components/animate-ui/components/radix/sheet';
 import MapComponent from './components/MapComponent';
-import DashboardModal from './components/DashboardModal';
 
 const LEBANON_CENTER = [33.8547, 35.8623];
 
@@ -910,16 +909,7 @@ function App() {
   const [focusedEvent, setFocusedEvent] = useState(null);
   const [activeType, setActiveType] = useState('all');
   const [activeWindow, setActiveWindow] = useState('2h');
-  const [showDashboard, setShowDashboard] = useState(false);
   const shellRef = useRef(null);
-
-  // Check if admin is requested via URL: ?admin=true
-  const isAdmin = useMemo(() => new URLSearchParams(window.location.search).get('admin') === 'true', []);
-
-  useEffect(() => {
-    // Track visitor exactly once per app initialization
-    fetch(`${import.meta.env.VITE_API_BASE_URL || ''}/api/track`, { method: 'POST' }).catch(() => {});
-  }, []);
 
   useEffect(() => {
     const shell = shellRef.current;

@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Red Alerts Lebanon — Admin Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #000;
+      --surface: #0a0a0a;
+      --surface2: #111;
+      --surface3: #181818;
+      --border: #222;
+      --border2: #2a2a2a;
+      --text: #fff;
+      --text2: #aaa;
+      --text3: #555;
+      --accent: #fff;
+      --accent-dim: rgba(255,255,255,0.06);
+    }
+
+    html, body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', sans-serif;
+      min-height: 100vh;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    /* ── Layout ─────────────────────────────── */
+    .shell {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem 4rem;
+    }
+
+    /* ── Header ─────────────────────────────── */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-bottom: 2rem;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 2.5rem;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+    .header-left { display: flex; align-items: center; gap: 1rem; }
+    .logo-dot { width: 10px; height: 10px; border-radius: 50%; background: #fff; animation: pulse 2s infinite; }
+    @keyframes pulse {
+      0%,100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.8); }
+    }
+    .header h1 { font-size: 1.1rem; font-weight: 700; letter-spacing: .04em; }
+    .header p { font-size: 0.75rem; color: var(--text3); font-family: 'JetBrains Mono', monospace; }
+    .refresh-btn {
+      background: var(--accent-dim);
+      border: 1px solid var(--border2);
+      color: var(--text2);
+      padding: .5rem 1.1rem;
+      border-radius: 8px;
+      font-size: .75rem;
+      font-family: 'Inter', sans-serif;
+      cursor: pointer;
+      transition: background .2s, color .2s;
+      letter-spacing: .03em;
+    }
+    .refresh-btn:hover { background: var(--border); color: #fff; }
+
+    /* ── Stat Cards ──────────────────────────── */
+    .stat-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; margin-bottom: 1.5rem; }
+    @media (min-width: 640px) { .stat-grid { grid-template-columns: repeat(4, 1fr); } }
+
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 1.4rem 1.5rem;
+      transition: border-color .2s;
+    }
+    .stat-card:hover { border-color: var(--border2); }
+    .stat-label {
+      font-size: .68rem;
+      color: var(--text3);
+      text-transform: uppercase;
+      letter-spacing: .1em;
+      margin-bottom: .6rem;
+    }
+    .stat-value {
+      font-size: 2.2rem;
+      font-weight: 800;
+      color: #fff;
+      line-height: 1;
+    }
+    .stat-sub { font-size: .7rem; color: var(--text3); margin-top: .4rem; }
+
+    /* ── Grid containers ─────────────────────── */
+    .section-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+    @media (min-width: 800px) { .section-grid.cols-2 { grid-template-columns: 1fr 1fr; } }
+    @media (min-width: 1100px) { .section-grid.cols-3 { grid-template-columns: 1fr 1fr 1fr; } }
+
+    /* ── Panel ───────────────────────────────── */
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+    }
+    .panel-header {
+      padding: 1rem 1.4rem;
+      border-bottom: 1px solid var(--border);
+      font-size: .73rem;
+      text-transform: uppercase;
+      letter-spacing: .1em;
+      color: var(--text2);
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: .5rem;
+    }
+    .panel-body { padding: 1.2rem 1.4rem; }
+
+    /* ── Bar Chart ───────────────────────────── */
+    .barchart { display: flex; flex-direction: column; gap: .55rem; }
+    .bar-row { display: flex; align-items: center; gap: .8rem; }
+    .bar-label { min-width: 60px; font-size: .7rem; color: var(--text2); text-align: right; }
+    .bar-track { flex: 1; height: 6px; background: var(--border); border-radius: 9999px; overflow: hidden; }
+    .bar-fill { height: 100%; border-radius: 9999px; background: #fff; transition: width 1s cubic-bezier(.4,0,.2,1); }
+    .bar-count { font-size: .7rem; color: var(--text3); min-width: 28px; text-align: right; font-family: 'JetBrains Mono', monospace; }
+
+    /* ── Sparkline ───────────────────────────── */
+    .sparkline-wrap { display: flex; flex-direction: column; gap: 1rem; }
+    .sparkline-meta { display: flex; justify-content: space-between; font-size: .7rem; color: var(--text3); }
+    .spark-svg { width: 100%; height: 64px; overflow: visible; }
+    .sparkline-legend { display: flex; gap: 1.2rem; }
+    .legend-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+
+    /* ── Hourly chart ────────────────────────── */
+    .hourly-chart { display: flex; align-items: flex-end; gap: 3px; height: 72px; padding-top: 4px; }
+    .hour-bar-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; height: 100%; justify-content: flex-end; }
+    .hour-bar { width: 100%; border-radius: 3px 3px 0 0; background: #fff; transition: height .8s ease; min-height: 2px; }
+    .hour-label { font-size: 9px; color: var(--text3); writing-mode: vertical-rl; transform: rotate(180deg); }
+
+    /* ── Visitor Table ───────────────────────── */
+    .visitor-table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    th {
+      text-align: left;
+      font-size: .65rem;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      color: var(--text3);
+      padding: .6rem .8rem;
+      border-bottom: 1px solid var(--border);
+      font-weight: 600;
+    }
+    td {
+      padding: .7rem .8rem;
+      font-size: .75rem;
+      color: var(--text2);
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+      white-space: nowrap;
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: var(--accent-dim); }
+    .mono { font-family: 'JetBrains Mono', monospace; font-size: .7rem; color: #fff; }
+    .badge {
+      display: inline-block;
+      padding: .15rem .5rem;
+      border-radius: 5px;
+      font-size: .65rem;
+      font-weight: 600;
+      border: 1px solid var(--border2);
+      background: var(--surface2);
+      color: var(--text2);
+    }
+    .flag-img { width: 20px; height: 14px; border-radius: 2px; vertical-align: middle; margin-right: .4rem; }
+
+    /* ── Status banner ───────────────────────── */
+    .status-bar {
+      display: flex;
+      align-items: center;
+      gap: .7rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: .8rem 1.2rem;
+      margin-bottom: 1.5rem;
+      font-size: .73rem;
+      color: var(--text3);
+    }
+    .status-ok { width: 8px; height: 8px; border-radius: 50%; background: #fff; flex-shrink: 0; }
+    .status-time { margin-left: auto; font-family: 'JetBrains Mono', monospace; font-size: .65rem; }
+
+    /* ── Loading state ───────────────────────── */
+    .loading {
+      display: flex; align-items: center; justify-content: center;
+      min-height: 80vh; color: var(--text3); font-size: .8rem; gap: .8rem;
+      flex-direction: column;
+    }
+    .spinner {
+      width: 28px; height: 28px; border-radius: 50%;
+      border: 2px solid var(--border2); border-top-color: #fff;
+      animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Section title ───────────────────────── */
+    .section-title {
+      font-size: .65rem;
+      text-transform: uppercase;
+      letter-spacing: .12em;
+      color: var(--text3);
+      margin-bottom: .8rem;
+      margin-top: 1.8rem;
+      display: flex;
+      align-items: center;
+      gap: .5rem;
+    }
+    .section-title::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+    .empty { text-align: center; padding: 2rem; color: var(--text3); font-size: .78rem; }
+  </style>
+</head>
+<body>
+<div id="app">
+  <div class="loading"><div class="spinner"></div><span>Loading analytics…</span></div>
+</div>
+
+<script>
+  const API = (window.__API_URL__ || '') || (() => {
+    // Auto-detect: if on Hostinger (redalerts-lebanon.online), use Render backend
+    if (location.hostname.includes('redalerts-lebanon.online') || location.hostname.includes('hostinger')) {
+      return 'https://redalerts-lebanon.onrender.com';
+    }
+    // Local dev
+    return 'http://localhost:8787';
+  })();
+
+  function fmt(n) { return Number(n || 0).toLocaleString(); }
+  function relTime(iso) {
+    if (!iso) return '—';
+    const diff = Math.floor((Date.now() - new Date(iso)) / 1000);
+    if (diff < 60) return `${diff}s ago`;
+    if (diff < 3600) return `${Math.floor(diff/60)}m ago`;
+    if (diff < 86400) return `${Math.floor(diff/3600)}h ago`;
+    return new Date(iso).toLocaleDateString();
+  }
+  function dateLabel(d) {
+    const [y,m,day] = d.split('-');
+    return `${day}/${m}`;
+  }
+
+  function buildBar(label, count, max) {
+    const pct = max > 0 ? Math.round((count / max) * 100) : 0;
+    return `<div class="bar-row">
+      <span class="bar-label">${label}</span>
+      <div class="bar-track"><div class="bar-fill" style="width:0%" data-width="${pct}%"></div></div>
+      <span class="bar-count">${fmt(count)}</span>
+    </div>`;
+  }
+
+  function buildSparkline(history) {
+    if (!history.length) return '<div class="empty">No data yet</div>';
+    const maxViews = Math.max(...history.map(h => h.views), 1);
+    const maxVis   = Math.max(...history.map(h => h.visitors), 1);
+    const W = 400, H = 64, pad = 4;
+
+    const pts = (arr, max) => arr.map((v, i) => {
+      const x = pad + (i / (arr.length - 1 || 1)) * (W - pad * 2);
+      const y = H - pad - ((v / max) * (H - pad * 2));
+      return `${x},${y}`;
+    }).join(' ');
+
+    const viewPoints  = history.map(h => h.views);
+    const visitPoints = history.map(h => h.visitors);
+
+    return `<div class="sparkline-wrap">
+      <svg class="spark-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+        <polyline fill="none" stroke="rgba(255,255,255,0.35)" stroke-width="1.5"
+          points="${pts(visitPoints, maxViews)}" />
+        <polyline fill="none" stroke="#fff" stroke-width="2"
+          points="${pts(viewPoints, maxViews)}" />
+      </svg>
+      <div class="sparkline-meta">
+        <span>${dateLabel(history[0].date)}</span>
+        <div class="sparkline-legend">
+          <span><span class="legend-dot" style="background:#fff"></span> Views</span>
+          <span><span class="legend-dot" style="background:rgba(255,255,255,.35)"></span> Visitors</span>
+        </div>
+        <span>${dateLabel(history[history.length-1].date)}</span>
+      </div>
+    </div>`;
+  }
+
+  function buildHourly(hourlyHistory) {
+    if (!hourlyHistory || !hourlyHistory.length) return '<div class="empty">No hourly data yet</div>';
+    const maxH = Math.max(...hourlyHistory.map(h => h.views), 1);
+    const bars = hourlyHistory.map((h, i) => {
+      const pct = Math.round((h.views / maxH) * 100);
+      const showLabel = i % 4 === 0;
+      return `<div class="hour-bar-wrap">
+        <div class="hour-bar" style="height:${Math.max(2, pct * 0.68)}px" title="${h.hour}: ${h.views} views"></div>
+        <span class="hour-label" style="opacity:${showLabel ? .5 : 0}">${h.hour}</span>
+      </div>`;
+    }).join('');
+    return `<div class="hourly-chart">${bars}</div>`;
+  }
+
+  function buildVisitorRows(visitors) {
+    if (!visitors.length) return '<tr><td colspan="7" class="empty">No visitors recorded yet.</td></tr>';
+    return visitors.slice(0, 80).map(v => `<tr>
+      <td><span class="mono">${v.ip || '—'}</span></td>
+      <td>
+        ${v.flag ? `<img src="${v.flag}" class="flag-img" onerror="this.style.display='none'" />` : ''}
+        ${v.location || '<span style="color:var(--text3)">Resolving…</span>'}
+      </td>
+      <td><span class="badge">${v.device || '?'}</span></td>
+      <td>${v.os || '?'}</td>
+      <td><span class="badge">${v.browser || '?'}</span></td>
+      <td style="color:var(--text3);font-size:.65rem">${v.isp || '?'}</td>
+      <td style="color:var(--text3)">${relTime(v.timestamp)}</td>
+    </tr>`).join('');
+  }
+
+  function render(data) {
+    const maxCountry = Math.max(...(data.topCountries || []).map(c => c.count), 1);
+    const maxBrowser = Math.max(...(data.topBrowsers || []).map(b => b.count), 1);
+    const maxDevice  = Math.max(...(data.deviceBreakdown || []).map(d => d.count), 1);
+
+    document.getElementById('app').innerHTML = `
+      <div class="shell">
+        <div class="header">
+          <div class="header-left">
+            <div class="logo-dot"></div>
+            <div>
+              <h1>Red Alerts Lebanon — Analytics</h1>
+              <p>admin dashboard · auto-refreshes every 30s</p>
+            </div>
+          </div>
+          <button class="refresh-btn" onclick="loadData()">↻ Refresh</button>
+        </div>
+
+        <div class="status-bar">
+          <div class="status-ok"></div>
+          <span>Backend online · Server started <strong id="start-time"></strong></span>
+          <span class="status-time">Last updated: <span id="last-updated"></span></span>
+        </div>
+
+        <!-- Stat Cards -->
+        <div class="stat-grid">
+          <div class="stat-card">
+            <div class="stat-label">Today's Views</div>
+            <div class="stat-value">${fmt(data.todayViews)}</div>
+            <div class="stat-sub">Page loads today</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Today's Visitors</div>
+            <div class="stat-value">${fmt(data.todayVisitors)}</div>
+            <div class="stat-sub">Unique IPs today</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Total Views</div>
+            <div class="stat-value">${fmt(data.totalViews)}</div>
+            <div class="stat-sub">Since last deploy</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Total Visitors</div>
+            <div class="stat-value">${fmt(data.totalVisitors)}</div>
+            <div class="stat-sub">Unique fingerprints</div>
+          </div>
+        </div>
+
+        <!-- Charts row -->
+        <div class="section-title">Traffic Trends</div>
+        <div class="section-grid cols-2">
+          <div class="panel">
+            <div class="panel-header">Last 7 Days</div>
+            <div class="panel-body">${buildSparkline(data.history || [])}</div>
+          </div>
+          <div class="panel">
+            <div class="panel-header">Hourly Activity (Last 24h)</div>
+            <div class="panel-body">${buildHourly(data.hourlyHistory || [])}</div>
+          </div>
+        </div>
+
+        <!-- Country / Device / Browser row -->
+        <div class="section-title">Audience</div>
+        <div class="section-grid cols-3">
+          <div class="panel">
+            <div class="panel-header">Top Countries</div>
+            <div class="panel-body">
+              <div class="barchart">
+                ${(data.topCountries || []).length
+                  ? data.topCountries.map(c => buildBar(c.country, c.count, maxCountry)).join('')
+                  : '<div class="empty">No data yet</div>'}
+              </div>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-header">Devices</div>
+            <div class="panel-body">
+              <div class="barchart">
+                ${(data.deviceBreakdown || []).length
+                  ? data.deviceBreakdown.map(d => buildBar(d.device, d.count, maxDevice)).join('')
+                  : '<div class="empty">No data yet</div>'}
+              </div>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-header">Browsers</div>
+            <div class="panel-body">
+              <div class="barchart">
+                ${(data.topBrowsers || []).length
+                  ? data.topBrowsers.map(b => buildBar(b.browser, b.count, maxBrowser)).join('')
+                  : '<div class="empty">No data yet</div>'}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Recent visitors table -->
+        <div class="section-title">Recent Visitors</div>
+        <div class="panel">
+          <div class="visitor-table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>IP Address</th>
+                  <th>Location</th>
+                  <th>Device</th>
+                  <th>OS</th>
+                  <th>Browser</th>
+                  <th>ISP</th>
+                  <th>Seen</th>
+                </tr>
+              </thead>
+              <tbody>${buildVisitorRows(data.recentVisitors || [])}</tbody>
+            </table>
+          </div>
+        </div>
+      </div>`;
+
+    // Set server start time
+    if (data.serverStartTime) {
+      document.getElementById('start-time').textContent = relTime(data.serverStartTime);
+    }
+    document.getElementById('last-updated').textContent = new Date().toLocaleTimeString();
+
+    // Animate bars
+    setTimeout(() => {
+      document.querySelectorAll('.bar-fill').forEach(el => {
+        el.style.width = el.dataset.width;
+      });
+    }, 100);
+  }
+
+  async function loadData() {
+    try {
+      const res  = await fetch(`${API}/api/stats`);
+      const data = await res.json();
+      render(data);
+    } catch (e) {
+      document.getElementById('app').innerHTML =
+        `<div class="loading"><span>⚠ Could not connect to backend: ${e.message}</span><button class="refresh-btn" onclick="loadData()">↻ Retry</button></div>`;
+    }
+  }
+
+  loadData();
+  setInterval(loadData, 30000);
+</script>
+</body>
+</html>

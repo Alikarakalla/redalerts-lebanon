@@ -20,6 +20,7 @@ import {
   SheetDescription,
 } from '@/components/animate-ui/components/radix/sheet';
 import MapComponent from './components/MapComponent';
+import DashboardModal from './components/DashboardModal';
 
 const LEBANON_CENTER = [33.8547, 35.8623];
 
@@ -47,6 +48,13 @@ const LIVE_STREAMS = {
     logo: 'https://yt3.ggpht.com/GoZXY6BOD_V0vV3ok3fAzIbNMx3og4z2Jd2Up0BnocvBn35rMB4NG3vMOdzOpQ4-HFBUfDQ-JQ=s48-c-k-c0x00ffffff-no-rj',
     label: 'Al Arabiya',
     labelAr: '\u0627\u0644\u0639\u0631\u0628\u064a\u0629',
+  },
+  almanar: {
+    id: 'almanar',
+    embedUrl: 'https://m3u8player.org/player.html?url=https://edge.fastpublish.me/live/index.m3u8',
+    logo: 'https://www.almanar.com.lb/framework/assets/images/manar-logo.png',
+    label: 'Al Manar',
+    labelAr: '\u0627\u0644\u0645\u0646\u0627\u0631',
   },
 };
 
@@ -108,7 +116,7 @@ const TRANSLATIONS = {
   ar: {
     dir: 'rtl',
     appTitle: 'Red Alerts Lebanon',
-    liveFeed: '\u0628\u062b \u0645\u0631\u0627\u0642\u0628\u0629 \u0645\u0628\u0627\u0634\u0631',
+    liveFeed: '\u0628\u062b \u0645\u0631\u0627\u0642\u0629 \u0645\u0628\u0627\u0634\u0631',
     mappedLive: '\u0645\u0631\u0635\u0648\u062f \u0645\u0646 \u0622\u062e\u0631 24 \u0633\u0627\u0639\u0629',
     mappedEmpty: '\u0644\u0627 \u062a\u0648\u062c\u062f \u0623\u062d\u062f\u0627\u062b \u0641\u064a \u0622\u062e\u0631 24 \u0633\u0627\u0639\u0629',
     backendError: '\u0627\u0644\u062e\u0627\u062f\u0645 \u063a\u064a\u0631 \u0645\u062a\u0627\u062d',
@@ -260,7 +268,7 @@ function useStrikeData() {
 
     async function fetchAlerts() {
       try {
-        const response = await fetch('/api/alerts');
+        const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || ''}/api/alerts`);
         if (!response.ok) {
           throw new Error(`API returned ${response.status}`);
         }
@@ -309,7 +317,7 @@ function useTelegramFeed() {
 
     async function fetchTelegramFeed() {
       try {
-        const response = await fetch('/api/telegram/latest?limit=8');
+        const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || ''}/api/telegram/latest?limit=8`);
         if (!response.ok) {
           throw new Error(`API returned ${response.status}`);
         }
@@ -482,10 +490,10 @@ function LiveChannelButton({ stream, locale, active, onClick }) {
       aria-label={label}
       title={label}
     >
-      <span className="grid h-5 w-5 place-items-center overflow-hidden rounded-full border border-white/10 bg-white/5 p-1 sm:h-6 sm:w-6">
+      <span className="flex h-5 w-5 items-center justify-center overflow-hidden sm:h-6 sm:w-6">
         <img src={stream.logo} alt={label} className="h-full w-full object-contain" />
       </span>
-      <span className="hidden lg:inline">{label}</span>
+      <span>{label}</span>
     </motion.button>
   );
 }
@@ -493,7 +501,9 @@ function LiveChannelButton({ stream, locale, active, onClick }) {
 function LivePlayer({ stream, locale, onClose }) {
   const t = TRANSLATIONS[locale];
   const title = locale === 'ar' ? stream.labelAr : stream.label;
-  const embedUrl = `https://www.youtube-nocookie.com/embed/${stream.youtubeId}?autoplay=1&rel=0&modestbranding=1&playsinline=1`;
+  const embedUrl = stream.youtubeId 
+    ? `https://www.youtube-nocookie.com/embed/${stream.youtubeId}?autoplay=1&rel=0&modestbranding=1&playsinline=1`
+    : stream.embedUrl;
 
   return (
     <AnimatePresence>
@@ -900,7 +910,16 @@ function App() {
   const [focusedEvent, setFocusedEvent] = useState(null);
   const [activeType, setActiveType] = useState('all');
   const [activeWindow, setActiveWindow] = useState('2h');
+  const [showDashboard, setShowDashboard] = useState(false);
   const shellRef = useRef(null);
+
+  // Check if admin is requested via URL: ?admin=true
+  const isAdmin = useMemo(() => new URLSearchParams(window.location.search).get('admin') === 'true', []);
+
+  useEffect(() => {
+    // Track visitor exactly once per app initialization
+    fetch(`${import.meta.env.VITE_API_BASE_URL || ''}/api/track`, { method: 'POST' }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     const shell = shellRef.current;
@@ -988,11 +1007,17 @@ function App() {
                 active={activeStreamId === 'jazeera'}
                 onClick={() => setActiveStreamId((current) => (current === 'jazeera' ? null : 'jazeera'))}
               />
-               <LiveChannelButton
+              <LiveChannelButton
                 stream={LIVE_STREAMS.alarabiya}
                 locale={locale}
                 active={activeStreamId === 'alarabiya'}
                 onClick={() => setActiveStreamId((current) => (current === 'alarabiya' ? null : 'alarabiya'))}
+              />
+              <LiveChannelButton
+                stream={LIVE_STREAMS.almanar}
+                locale={locale}
+                active={activeStreamId === 'almanar'}
+                onClick={() => setActiveStreamId((current) => (current === 'almanar' ? null : 'almanar'))}
               />
             </div>
             <LanguageToggle
@@ -1070,6 +1095,12 @@ function App() {
                 locale={locale}
                 active={activeStreamId === 'alarabiya'}
                 onClick={() => setActiveStreamId((current) => (current === 'alarabiya' ? null : 'alarabiya'))}
+              />
+              <LiveChannelButton
+                stream={LIVE_STREAMS.almanar}
+                locale={locale}
+                active={activeStreamId === 'almanar'}
+                onClick={() => setActiveStreamId((current) => (current === 'almanar' ? null : 'almanar'))}
               />
             </div>
             <div className="flex items-center gap-2">
@@ -1170,13 +1201,26 @@ function App() {
         </main>
       </div>
 
-      {activeStream ? (
+      {activeStream && status !== 'error' && (
         <LivePlayer
           stream={activeStream}
           locale={locale}
           onClose={() => setActiveStreamId(null)}
         />
-      ) : null}
+      )}
+
+      {showDashboard && (
+        <DashboardModal locale={locale} onClose={() => setShowDashboard(false)} />
+      )}
+
+      {isAdmin && (
+        <button
+          onClick={() => setShowDashboard(true)}
+          className="fixed bottom-4 left-4 z-50 rounded-full border border-red-500/50 bg-red-500/20 px-3 py-1.5 text-xs font-bold text-red-500 backdrop-blur-md transition hover:bg-red-500/30"
+        >
+          {locale === 'ar' ? 'لوحة القيادة' : 'Admin Dashboard'}
+        </button>
+      )}
     </div>
   );
 }

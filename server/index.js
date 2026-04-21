@@ -5,8 +5,10 @@ import { getMappableAlerts, processMessage } from './processMessage.js';
 import { getStorageMode, saveAlert } from './supabaseStore.js';
 import { isLikelyDuplicate } from './dedupe.js';
 import { getChannelMessagesSince, getLatestChannelMessages, startTelegramListener } from './telegramListener.js';
+import { trackVisitor, getStats } from './analytics.js';
 
 const app = express();
+app.set('trust proxy', true);
 
 app.use(cors());
 app.use(express.json());
@@ -17,6 +19,17 @@ app.get('/api/health', async (_req, res) => {
     storage: getStorageMode(),
     time: new Date().toISOString(),
   });
+});
+
+app.post('/api/track', (req, res) => {
+  const ip = req.ip || req.connection?.remoteAddress || 'unknown';
+  const ua = req.get('user-agent') || 'unknown';
+  trackVisitor(ip, ua);
+  res.json({ tracked: true });
+});
+
+app.get('/api/stats', (req, res) => {
+  res.json(getStats());
 });
 
 // ─── Telegram fetch ──────────────────────────────────────────────────────────

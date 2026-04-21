@@ -19,6 +19,7 @@ app.get('/api/health', async (_req, res) => {
   });
 });
 
+// ─── Telegram fetch ──────────────────────────────────────────────────────────
 async function getTelegramAlerts() {
   const processedAlerts = [];
   const channels = config.telegramChannels.length > 0 ? config.telegramChannels : [undefined];
@@ -34,10 +35,7 @@ async function getTelegramAlerts() {
       }));
 
       for (const alert of mappableAlerts) {
-        if (isLikelyDuplicate(alert, processedAlerts)) {
-          continue;
-        }
-
+        if (isLikelyDuplicate(alert, processedAlerts)) continue;
         processedAlerts.push({
           ...alert,
           source: 'telegram',
@@ -50,10 +48,42 @@ async function getTelegramAlerts() {
   return processedAlerts.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 }
 
-app.get('/api/alerts', async (req, res) => {
+// ─── In-memory cache ────────────────────────────────────────────────────────
+const CACHE_TTL_MS = 90_000; // refresh every 90 seconds
+let alertsCache = { data: null, fetchedAt: 0, refreshing: false };
+
+async function refreshAlertsCache() {
+  if (alertsCache.refreshing) return;
+  alertsCache.refreshing = true;
   try {
     const alerts = await getTelegramAlerts();
-    res.json({ alerts });
+    alertsCache.data = alerts;
+    alertsCache.fetchedAt = Date.now();
+    console.log(`[cache] alerts refreshed — ${alerts.length} items`);
+  } catch (error) {
+    console.error('[cache] refresh failed:', error.message);
+  } finally {
+    alertsCache.refreshing = false;
+  }
+}
+
+app.get('/api/alerts', async (req, res) => {
+  // Serve from cache if fresh enough
+  if (alertsCache.data && Date.now() - alertsCache.fetchedAt < CACHE_TTL_MS) {
+    return res.json({ alerts: alertsCache.data, cached: true });
+  }
+
+  // If cache is stale but we have something, return it immediately and refresh in background
+  if (alertsCache.data) {
+    res.json({ alerts: alertsCache.data, cached: true });
+    refreshAlertsCache();
+    return;
+  }
+
+  // No cache yet — fetch synchronously (first cold start)
+  try {
+    await refreshAlertsCache();
+    res.json({ alerts: alertsCache.data || [], cached: false });
   } catch (error) {
     console.error('Failed to fetch alerts:', error);
     res.status(500).json({ error: 'Failed to fetch alerts' });
@@ -119,6 +149,13 @@ async function bootstrap() {
       console.error('Listener pipeline failed:', error);
     }
   });
+
+  // Pre-warm cache immediately on startup so first visitor gets instant response
+  console.log('[cache] Pre-warming alerts cache...');
+  refreshAlertsCache();
+
+  // Keep refreshing every 90 seconds in background
+  setInterval(refreshAlertsCache, CACHE_TTL_MS);
 }
 
 bootstrap().catch((error) => {

@@ -2,7 +2,12 @@ import express from 'express';
 import cors from 'cors';
 import { config } from './config.js';
 import { getMappableAlerts, processMessage } from './processMessage.js';
-import { getStorageMode, saveAlert } from './supabaseStore.js';
+import {
+  getStorageMode,
+  queryAlertHistory,
+  saveAlert,
+  serializeAlertsToCsv,
+} from './supabaseStore.js';
 import { isLikelyDuplicate } from './dedupe.js';
 import { getChannelMessagesSince, getLatestChannelMessages, startTelegramListener } from './telegramListener.js';
 import { trackVisitor, getStats } from './analytics.js';
@@ -32,7 +37,19 @@ app.get('/api/stats', (req, res) => {
   res.json(getStats());
 });
 
-// ─── Telegram fetch ──────────────────────────────────────────────────────────
+function parseHistoryFilters(query) {
+  return {
+    from: typeof query.from === 'string' ? query.from : undefined,
+    to: typeof query.to === 'string' ? query.to : undefined,
+    type: typeof query.type === 'string' ? query.type : undefined,
+    severity: typeof query.severity === 'string' ? query.severity : undefined,
+    location: typeof query.location === 'string' ? query.location : undefined,
+    sourceChannel: typeof query.sourceChannel === 'string' ? query.sourceChannel : undefined,
+    limit: query.limit,
+    offset: query.offset,
+  };
+}
+
 async function getTelegramAlerts() {
   const processedAlerts = [];
   const channels = config.telegramChannels.length > 0 ? config.telegramChannels : [undefined];
@@ -48,11 +65,16 @@ async function getTelegramAlerts() {
       }));
 
       for (const alert of mappableAlerts) {
-        if (isLikelyDuplicate(alert, processedAlerts)) continue;
+        if (isLikelyDuplicate(alert, processedAlerts)) {
+          continue;
+        }
+
         processedAlerts.push({
           ...alert,
           source: 'telegram',
-          sourceLabel: message.channel?.toLowerCase().includes('redlinkleb') ? 'Telegram · RedLink' : 'Telegram',
+          sourceLabel: message.channel?.toLowerCase().includes('redlinkleb')
+            ? 'Telegram - RedLink'
+            : 'Telegram',
         });
       }
     }
@@ -61,18 +83,42 @@ async function getTelegramAlerts() {
   return processedAlerts.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 }
 
-// ─── In-memory cache ────────────────────────────────────────────────────────
-const CACHE_TTL_MS = 90_000; // refresh every 90 seconds
+async function syncTelegramAlertsToStore() {
+  const alerts = await getTelegramAlerts();
+  let inserted = 0;
+
+  for (const alert of alerts) {
+    const result = await saveAlert(alert);
+    if (result.saved) {
+      inserted += 1;
+    }
+  }
+
+  return { alerts, inserted };
+}
+
+const CACHE_TTL_MS = 90_000;
 let alertsCache = { data: null, fetchedAt: 0, refreshing: false };
 
 async function refreshAlertsCache() {
-  if (alertsCache.refreshing) return;
+  if (alertsCache.refreshing) {
+    return;
+  }
+
   alertsCache.refreshing = true;
+
   try {
-    const alerts = await getTelegramAlerts();
+    await syncTelegramAlertsToStore();
+    const windowStart = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const { alerts } = await queryAlertHistory({
+      from: windowStart,
+      limit: 500,
+      offset: 0,
+    });
+
     alertsCache.data = alerts;
     alertsCache.fetchedAt = Date.now();
-    console.log(`[cache] alerts refreshed — ${alerts.length} items`);
+    console.log(`[cache] alerts refreshed - ${alerts.length} items`);
   } catch (error) {
     console.error('[cache] refresh failed:', error.message);
   } finally {
@@ -80,26 +126,75 @@ async function refreshAlertsCache() {
   }
 }
 
-app.get('/api/alerts', async (req, res) => {
-  // Serve from cache if fresh enough
+app.get('/api/alerts', async (_req, res) => {
   if (alertsCache.data && Date.now() - alertsCache.fetchedAt < CACHE_TTL_MS) {
-    return res.json({ alerts: alertsCache.data, cached: true });
+    return res.json({ alerts: alertsCache.data, cached: true, storage: getStorageMode() });
   }
 
-  // If cache is stale but we have something, return it immediately and refresh in background
   if (alertsCache.data) {
-    res.json({ alerts: alertsCache.data, cached: true });
+    res.json({ alerts: alertsCache.data, cached: true, storage: getStorageMode() });
     refreshAlertsCache();
     return;
   }
 
-  // No cache yet — fetch synchronously (first cold start)
   try {
     await refreshAlertsCache();
-    res.json({ alerts: alertsCache.data || [], cached: false });
+    res.json({ alerts: alertsCache.data || [], cached: false, storage: getStorageMode() });
   } catch (error) {
     console.error('Failed to fetch alerts:', error);
     res.status(500).json({ error: 'Failed to fetch alerts' });
+  }
+});
+
+app.get('/api/history', async (req, res) => {
+  try {
+    const filters = parseHistoryFilters(req.query);
+    const result = await queryAlertHistory(filters);
+
+    res.json({
+      ...result,
+      storage: getStorageMode(),
+      filters,
+    });
+  } catch (error) {
+    console.error('Failed to fetch alert history:', error);
+    res.status(500).json({ error: 'Failed to fetch alert history' });
+  }
+});
+
+app.get('/api/history/export', async (req, res) => {
+  try {
+    const format = typeof req.query.format === 'string' ? req.query.format.toLowerCase() : 'json';
+    const filters = parseHistoryFilters(req.query);
+    const result = await queryAlertHistory({
+      ...filters,
+      limit: 5000,
+      offset: 0,
+    });
+
+    if (format === 'csv') {
+      const csv = serializeAlertsToCsv(result.alerts);
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', 'attachment; filename="alerts-export.csv"');
+      return res.send(csv);
+    }
+
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    return res.send(
+      JSON.stringify(
+        {
+          exportedAt: new Date().toISOString(),
+          total: result.total,
+          filters,
+          alerts: result.alerts,
+        },
+        null,
+        2
+      )
+    );
+  } catch (error) {
+    console.error('Failed to export alert history:', error);
+    res.status(500).json({ error: 'Failed to export alert history' });
   }
 });
 
@@ -159,21 +254,22 @@ async function bootstrap() {
             console.log(`Saved alert from ${sourceChannel}: ${alert.locationName}`);
           }
         }
+
+        alertsCache.fetchedAt = 0;
       } catch (error) {
         console.error('Listener pipeline failed:', error);
       }
     });
-
   } catch (error) {
-    console.error('\n🔴 FATAL TELEGRAM ERROR:', error.message);
-    console.error('The backend will stay running to serve the dashboard, but live alerts are DISABLE until you update your TELEGRAM_SESSION string!');
+    console.error('\nFATAL TELEGRAM ERROR:', error.message);
+    console.error(
+      'The backend will stay running to serve the dashboard, but live alerts are disabled until you update your TELEGRAM_SESSION string!'
+    );
   }
 
-  // Pre-warm cache immediately on startup so first visitor gets instant response
   console.log('[cache] Pre-warming alerts cache...');
   refreshAlertsCache();
 
-  // Keep refreshing every 90 seconds in background
   setInterval(refreshAlertsCache, CACHE_TTL_MS);
 }
 

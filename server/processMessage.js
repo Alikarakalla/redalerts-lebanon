@@ -15,6 +15,16 @@ const ARABIC = {
   drone: '\u0645\u0633\u064a\u0631\u0629',
   missileFall: '\u0633\u0642\u0648\u0637 \u0635\u0627\u0631\u0648\u062e',
   warplane: '\u0645\u0642\u0627\u062a\u0644\u0627\u062a_\u062d\u0631\u0628\u064a\u0629',
+  car: '\u0633\u064a\u0627\u0631\u0629',
+  vehicle: '\u0645\u0631\u0643\u0628\u0629',
+  motorcycle: '\u062f\u0631\u0627\u062c\u0629',
+  jeep: '\u062c\u064a\u0628',
+  van: '\u0641\u0627\u0646',
+  pickup: '\u0628\u064a\u0643 \u0627\u0628',
+  machine: '\u0622\u0644\u064a\u0629',
+  machineAlt: '\u0627\u0644\u064a\u0629',
+  truck: '\u0634\u0627\u062d\u0646\u0629',
+  injuries: '\u0627\u0635\u0627\u0628\u0627\u062a',
 };
 
 const LOCATION_PREFIXES = [
@@ -30,6 +40,9 @@ const LOCATION_LABELS = [
   '\u0645\u0646\u0637\u0642\u0629',
   '\u0642\u0631\u064a\u0629',
   '\u0628\u0644\u062f\u0629',
+  '\u0637\u0631\u064a\u0642 \u0639\u0627\u0645',
+  '\u0637\u0631\u064a\u0642',
+  '\u0637\u0631\u064a\u0642 \u0645\u0646\u0637\u0642\u0629',
 ];
 
 const LOCATION_STOP_WORDS = [
@@ -51,18 +64,83 @@ const LOCATION_BLOCKLIST_PREFIXES = [
   '\u0627\u0644\u0645\u0633\u0624\u0648\u0644',
 ];
 
+function normalizeArabicText(value) {
+  return (value || '')
+    .normalize('NFKD')
+    .replace(/[\u0640\u064B-\u065F\u0670\u06D6-\u06ED]/gu, '')
+    .replace(/\s+/gu, ' ')
+    .trim()
+    .toLowerCase();
+}
+
 function includesArabic(text, token) {
-  return text.includes(token);
+  return normalizeArabicText(text).includes(normalizeArabicText(token));
+}
+
+function hasVehicleMention(text) {
+  const normalized = normalizeArabicText(text);
+  return (
+    includesArabic(text, ARABIC.car) ||
+    includesArabic(text, ARABIC.vehicle) ||
+    includesArabic(text, ARABIC.motorcycle) ||
+    includesArabic(text, ARABIC.jeep) ||
+    includesArabic(text, ARABIC.van) ||
+    includesArabic(text, ARABIC.pickup) ||
+    includesArabic(text, ARABIC.machine) ||
+    includesArabic(text, ARABIC.machineAlt) ||
+    includesArabic(text, ARABIC.truck) ||
+    normalized.includes('\u0633\u064a\u0627\u0631\u0647') ||
+    normalized.includes('\u0645\u0631\u0643\u0628\u0647') ||
+    normalized.includes('\u062f\u0631\u0627\u062c\u0647') ||
+    normalized.includes('\u062c\u064a\u0628') ||
+    normalized.includes('\u0641\u0627\u0646') ||
+    normalized.includes('\u0628\u064a\u0643 \u0627\u0628') ||
+    normalized.includes('\u0628\u064a\u0643\u0627\u0628') ||
+    normalized.includes('\u0627\u0644\u064a\u0647') ||
+    normalized.includes('\u0622\u0644\u064a\u0647') ||
+    normalized.includes('\u0634\u0627\u062d\u0646\u0647') ||
+    /\bcar\b|\bvehicle\b|\btruck\b|\bvan\b|\bjeep\b|\bmotorcycle\b|\bbike\b|\bpickup\b/i.test(text)
+  );
+}
+
+function hasVehicleAttackSignal(text) {
+  const normalized = normalizeArabicText(text);
+  return (
+    includesArabic(text, ARABIC.targeting) ||
+    normalized.includes('\u064a\u0633\u062a\u0647\u062f\u0641') ||
+    normalized.includes('\u0627\u0633\u062a\u0647\u062f\u0641') ||
+    normalized.includes('\u0627\u0633\u062a\u0647\u062f\u0627\u0641') ||
+    normalized.includes('\u0642\u0635\u0641') ||
+    normalized.includes('\u0636\u0631\u0628') ||
+    normalized.includes('\u0627\u0633\u062a\u0647\u062f\u0627\u0641\u0647') ||
+    normalized.includes('\u0627\u0633\u062a\u0647\u062f\u0641\u062a') ||
+    normalized.includes('\u0627\u0635\u0627\u0628') ||
+    normalized.includes('\u0627\u0644\u0639\u062f\u0648 \u0627\u0633\u062a\u0647\u062f\u0641') ||
+    normalized.includes('\u0627\u0644\u0639\u062f\u0648 \u064a\u0633\u062a\u0647\u062f\u0641') ||
+    includesArabic(text, ARABIC.raid) ||
+    includesArabic(text, ARABIC.explosion) ||
+    normalized.includes('targeted') ||
+    normalized.includes('targets') ||
+    normalized.includes('hit') ||
+    normalized.includes('struck') ||
+    normalized.includes('attacked') ||
+    normalized.includes('attack') ||
+    normalized.includes('shelling')
+  );
 }
 
 function inferType(text) {
-  const normalized = text.toLowerCase();
+  const normalized = normalizeArabicText(text);
+  const vehicleAttack = hasVehicleMention(text) && hasVehicleAttackSignal(text);
 
-  if (text.includes('#\u0645\u0642\u0627\u062a\u0644\u0627\u062a_\u062d\u0631\u0628\u064a\u0629')) {
+  if (normalized.includes(normalizeArabicText('#\u0645\u0642\u0627\u062a\u0644\u0627\u062a_\u062d\u0631\u0628\u064a\u0629'))) {
     return 'warplane';
   }
-  if (text.includes('#\u0645\u0633\u064a\u0631')) {
+  if (normalized.includes(normalizeArabicText('#\u0645\u0633\u064a\u0631')) || includesArabic(text, ARABIC.drone)) {
     return 'drone';
+  }
+  if (vehicleAttack) {
+    return 'carAttack';
   }
   if (includesArabic(text, ARABIC.explosion) || includesArabic(text, ARABIC.blast)) {
     return 'explosion';
@@ -91,13 +169,19 @@ function inferType(text) {
 }
 
 function severityFromText(text) {
-  const normalized = text.toLowerCase();
+  const normalized = normalizeArabicText(text);
+  const vehicleAttack = hasVehicleMention(text) && hasVehicleAttackSignal(text);
 
-  if (text.includes('#\u0645\u0642\u0627\u062a\u0644\u0627\u062a_\u062d\u0631\u0628\u064a\u0629')) {
+  if (normalized.includes(normalizeArabicText('#\u0645\u0642\u0627\u062a\u0644\u0627\u062a_\u062d\u0631\u0628\u064a\u0629'))) {
     return 'high';
   }
-  if (text.includes('#\u0645\u0633\u064a\u0631')) {
+  if (normalized.includes(normalizeArabicText('#\u0645\u0633\u064a\u0631')) || includesArabic(text, ARABIC.drone)) {
     return 'medium';
+  }
+  if (vehicleAttack) {
+    return includesArabic(text, ARABIC.injuries) || /injur|casualt|killed|dead/i.test(text)
+      ? 'high'
+      : 'medium';
   }
 
   if (
@@ -123,9 +207,13 @@ function severityFromText(text) {
 }
 
 function isConflictEvent(text) {
+  const normalized = normalizeArabicText(text);
+  const vehicleAttack = hasVehicleMention(text) && hasVehicleAttackSignal(text);
+
   return (
-    text.includes('#\u0645\u0633\u064a\u0631') ||
-    text.includes('#\u0645\u0642\u0627\u062a\u0644\u0627\u062a_\u062d\u0631\u0628\u064a\u0629') ||
+    vehicleAttack ||
+    normalized.includes(normalizeArabicText('#\u0645\u0633\u064a\u0631')) ||
+    normalized.includes(normalizeArabicText('#\u0645\u0642\u0627\u062a\u0644\u0627\u062a_\u062d\u0631\u0628\u064a\u0629')) ||
     includesArabic(text, ARABIC.explosion) ||
     includesArabic(text, ARABIC.blast) ||
     includesArabic(text, ARABIC.shelling) ||
@@ -212,22 +300,25 @@ function isRedLinkChannel(sourceChannel) {
 }
 
 function normalizeHashtagValue(value) {
-  return value
+  return normalizeArabicText(
+    value
     .replace(/^#+/u, '')
     .replace(/_/gu, ' ')
     .trim()
-    .toLowerCase();
+  );
 }
 
 function extractHashtagLocations(text) {
   const matches = text.match(/#[^\s#]+/gu) ?? [];
   const blockedTags = new Set([
-    '\u0645\u0633\u064a\u0631',
-    '\u0645\u0642\u0627\u062a\u0644\u0627\u062a \u062d\u0631\u0628\u064a\u0629',
-    '\u0627\u0644\u062c\u0646\u0648\u0628',
-    '\u062d\u0644\u0642',
-    '\u062d\u0644\u0642 \u0648\u062d\u0630\u0631',
-    '\u062d\u064a\u0637\u0629 \u0648\u062d\u0630\u0631',
+    normalizeArabicText('\u0645\u0633\u064a\u0631'),
+    normalizeArabicText('\u0645\u0633\u064a\u0631\u0629'),
+    normalizeArabicText('\u0645\u0642\u0627\u062a\u0644\u0627\u062a \u062d\u0631\u0628\u064a\u0629'),
+    normalizeArabicText('\u0627\u0644\u062c\u0646\u0648\u0628'),
+    normalizeArabicText('\u062d\u0644\u0642'),
+    normalizeArabicText('\u062d\u0644\u0642 \u0648\u062d\u0630\u0631'),
+    normalizeArabicText('\u062d\u064a\u0637\u0629 \u0648\u062d\u0630\u0631'),
+    normalizeArabicText('\u0627\u0644\u062c\u0648\u0627\u0631'),
   ]);
 
   return matches
@@ -261,9 +352,10 @@ async function buildAlertForLocation(text, sourceChannel, location, forcedType) 
 }
 
 async function buildRedLinkAlerts(text, sourceChannel) {
-  const forcedType = text.includes('#\u0645\u0642\u0627\u062a\u0644\u0627\u062a_\u062d\u0631\u0628\u064a\u0629')
+  const normalized = normalizeArabicText(text);
+  const forcedType = normalized.includes(normalizeArabicText('#\u0645\u0642\u0627\u062a\u0644\u0627\u062a_\u062d\u0631\u0628\u064a\u0629'))
     ? 'warplane'
-    : text.includes('#\u0645\u0633\u064a\u0631')
+    : normalized.includes(normalizeArabicText('#\u0645\u0633\u064a\u0631')) || includesArabic(text, ARABIC.drone)
       ? 'drone'
       : inferType(text);
 

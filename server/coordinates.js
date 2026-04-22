@@ -87,6 +87,10 @@ const CITY_COORDINATES = {
   'دير ميماس': { lat: 33.3167, lng: 35.5333 },
   'qantara': { lat: 33.2833, lng: 35.4167 },
   'القنطرة': { lat: 33.2833, lng: 35.4167 },
+  'tayri': { lat: 33.2278, lng: 35.4497 },
+  'teyri': { lat: 33.2278, lng: 35.4497 },
+  'altayri': { lat: 33.2278, lng: 35.4497 },
+  'الطيري': { lat: 33.2278, lng: 35.4497 },
   'majdelselm': { lat: 33.2333, lng: 35.4667 },
   'مجدل سلم': { lat: 33.2333, lng: 35.4667 },
   'yater': { lat: 33.1667, lng: 35.3167 },
@@ -233,6 +237,12 @@ const CITY_COORDINATES = {
 
 const CACHE_FILE = path.resolve(process.cwd(), 'server', 'data', 'location-cache.json');
 const locationCache = loadLocationCache();
+const LOCATION_ALIASES = {
+  'الغربية زوطر': 'زوطر الغربية',
+  'الشرقية زوطر': 'زوطر الشرقية',
+  'زوطر الغربيه': 'زوطر الغربية',
+  'زوطر الشرقيه': 'زوطر الشرقية',
+};
 
 function loadLocationCache() {
   try {
@@ -260,7 +270,8 @@ function normalizeLocation(location) {
     return { normalized: '', normalizedWithoutArticle: '' };
   }
 
-  const normalized = location.trim().toLowerCase();
+  const alias = LOCATION_ALIASES[location.trim()] ?? location.trim();
+  const normalized = alias.toLowerCase();
   const arabicArticle = '\u0627\u0644';
   const normalizedWithoutArticle = normalized.startsWith(arabicArticle)
     ? normalized.slice(arabicArticle.length)

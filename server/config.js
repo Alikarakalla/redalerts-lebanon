@@ -18,8 +18,16 @@ export const config = {
   telegramSessionFile: path.resolve(process.cwd(), process.env.TELEGRAM_SESSION_FILE || '.telegram-session'),
   telegramChannels: parseChannels(process.env.TELEGRAM_CHANNELS),
   telegramCheckIntervalMs: Number(process.env.TELEGRAM_CHECK_INTERVAL_MS || 15000),
+  alertsDataFile: path.resolve(process.cwd(), process.env.ALERTS_DATA_FILE || 'server/data/alerts.json'),
+  supabaseUrl: process.env.SUPABASE_URL || '',
+  supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+  supabaseAlertsTable: process.env.SUPABASE_ALERTS_TABLE || 'alerts',
 };
 
 export function hasTelegramConfig() {
   return Boolean(config.telegramApiId && config.telegramApiHash);
+}
+
+export function hasSupabaseConfig() {
+  return Boolean(config.supabaseUrl && config.supabaseServiceRoleKey);
 }

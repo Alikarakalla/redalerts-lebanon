@@ -3,3 +3,5 @@ dist
 .DS_Store
 .telegram-session
 .env
+.env.production
+server/data/alerts.json

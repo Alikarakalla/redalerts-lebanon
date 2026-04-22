@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
-import { Info, ChevronDown, ChevronUp } from 'lucide-react';
+import { Info, ChevronDown, ChevronUp, Plus, Minus } from 'lucide-react';
+import * as Slider from '@radix-ui/react-slider';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
@@ -186,6 +187,7 @@ function clusterEvents(events, locale, zoomLevel) {
       count: cluster.count,
       items: cluster.items,
       primaryLocation: primaryLocation,
+      allLocations: [...cluster.locationNames],
       locationCount: cluster.locationNames.size,
       originalEvent: cluster.count === 1 ? latestItem : null,
       title:
@@ -211,11 +213,25 @@ function IncidentPopup({ incident, locale, t }) {
     ageBucket === 'fresh' ? 'text-red-400' : ageBucket === 'recent' ? 'text-slate-300' : 'text-slate-500';
 
   return (
-    <div className={`p-1 pt-2 w-[180px] font-sans ${MAP_TRANSLATIONS[locale].dir === 'rtl' ? 'text-right' : 'text-left'}`} dir={MAP_TRANSLATIONS[locale].dir}>
-      <h4 className="mb-0.5 text-[0.8rem] font-bold text-slate-100 flex items-center justify-between">
+    <div className={`p-1 pt-2 w-[220px] font-sans ${MAP_TRANSLATIONS[locale].dir === 'rtl' ? 'text-right' : 'text-left'}`} dir={MAP_TRANSLATIONS[locale].dir}>
+      <h4 className="mb-1 text-[0.85rem] font-bold text-slate-100 flex items-center justify-between border-b border-white/10 pb-1">
         <span>{incident.primaryLocation}</span>
         {isCluster && <span className="text-[0.65rem] bg-white/10 px-1.5 py-0.5 rounded-full">{incident.count}</span>}
       </h4>
+      
+      {isCluster && (
+        <div className="my-2 space-y-1">
+          <p className="text-[0.65rem] text-slate-500 uppercase tracking-wider">{locale === 'ar' ? 'القرى المتأثرة:' : 'Affected villages:'}</p>
+          <div className="flex flex-wrap gap-1">
+            {incident.allLocations.map((loc, idx) => (
+              <span key={idx} className="text-[0.7rem] text-slate-200 bg-white/5 px-2 py-0.5 rounded border border-white/5">
+                {loc}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
       <p className="mb-1 text-[0.7rem] font-medium text-slate-400">{formatEventLabel(incident.type, locale)}</p>
       <div className={`text-[0.65rem] font-medium ${timeColor}`}>
         {formatPopupTime(incident.timestamp, locale)}
@@ -240,15 +256,19 @@ const customIcon = (color, opacity, count, zIndexBase, isFresh) => {
   });
 };
 
-function MapEvents({ events, focusedEvent, locale }) {
+function MapEvents({ events, focusedEvent, locale, onZoomChange }) {
   const map = useMap();
   const [zoomLevel, setZoomLevel] = useState(map.getZoom());
 
   useEffect(() => {
-    const onZoomEnd = () => setZoomLevel(map.getZoom());
+    const onZoomEnd = () => {
+      const z = map.getZoom();
+      setZoomLevel(z);
+      onZoomChange?.(z);
+    };
     map.on('zoomend', onZoomEnd);
     return () => map.off('zoomend', onZoomEnd);
-  }, [map]);
+  }, [map, onZoomChange]);
 
   const mapData = useMemo(() => {
     const validEvents = events.filter((e) => e.lat && e.lng && isInLebanon(e.lng, e.lat));
@@ -292,7 +312,16 @@ export default function MapComponent({
   activeType = 'all',
   activeWindow = '24h',
 }) {
+  const [zoom, setZoom] = useState(DEFAULT_ZOOM);
   const [isLegendOpen, setIsLegendOpen] = useState(false);
+  const mapRef = React.useRef(null);
+  
+  const handleZoomChange = (newZoom) => {
+    if (mapRef.current) {
+      mapRef.current.setZoom(newZoom);
+    }
+  };
+
   const t = MAP_TRANSLATIONS[locale] ?? MAP_TRANSLATIONS.en;
   const isAr = locale === 'ar';
 
@@ -320,13 +349,55 @@ export default function MapComponent({
           className="h-full w-full"
           style={{ height: '100%', width: '100%' }}
           minZoom={7}
+          maxZoom={14}
+          ref={mapRef}
         >
           <TileLayer
             attribution='&copy; <a href="https://carto.com/">CartoDB</a>'
             url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
           />
-          <MapEvents events={filteredEvents} focusedEvent={focusedEvent} locale={locale} />
+          <MapEvents 
+            events={filteredEvents} 
+            focusedEvent={focusedEvent} 
+            locale={locale} 
+            onZoomChange={setZoom}
+          />
         </MapContainer>
+      </div>
+
+      {/* Zoom Slider Overlay */}
+      <div className="absolute bottom-4 right-4 z-[400] flex flex-col items-center gap-3 rounded-full border border-white/10 bg-black/60 p-2 py-4 shadow-2xl backdrop-blur-xl sm:bottom-8 sm:right-8">
+        <button
+          onClick={() => handleZoomChange(Math.min(zoom + 1, 14))}
+          className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition hover:bg-white/10 hover:text-white"
+        >
+          <Plus className="h-4 w-4" />
+        </button>
+
+        <Slider.Root
+          className="relative flex h-32 w-8 cursor-pointer touch-none select-none flex-col items-center"
+          value={[zoom]}
+          max={14}
+          min={7}
+          step={0.1}
+          orientation="vertical"
+          onValueChange={([val]) => handleZoomChange(val)}
+        >
+          <Slider.Track className="relative w-1 grow rounded-full bg-white/10">
+            <Slider.Range className="absolute w-full rounded-full bg-red-500/50" />
+          </Slider.Track>
+          <Slider.Thumb
+            className="block h-4 w-4 rounded-full border-2 border-red-500 bg-white shadow-lg transition-transform hover:scale-110 focus:outline-none"
+            aria-label="Zoom"
+          />
+        </Slider.Root>
+
+        <button
+          onClick={() => handleZoomChange(Math.max(zoom - 1, 7))}
+          className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition hover:bg-white/10 hover:text-white"
+        >
+          <Minus className="h-4 w-4" />
+        </button>
       </div>
 
       {/* Overlays / Legend */}

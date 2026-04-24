@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Circle, MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
-import { Info, ChevronDown, ChevronUp, Plus, Minus } from 'lucide-react';
+import { Info, ChevronDown, ChevronUp, Plus, Minus, Share2, Copy, ExternalLink, Check } from 'lucide-react';
 import * as Slider from '@radix-ui/react-slider';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -319,6 +319,67 @@ function clusterEvents(events, locale, zoomLevel) {
   return offsetIncidentsWithSameVillage(incidents);
 }
 
+function buildEventSummary(incident, locale) {
+  const isAr = locale === 'ar';
+  const time = formatPopupTime(incident.timestamp, locale);
+  const typeLabel = formatEventLabel(incident.type, locale);
+  
+  let summary = '';
+  if (incident.kind === 'cluster') {
+    const locations = incident.allLocations.join(', ');
+    summary = isAr 
+      ? `🔴 تحديث ميداني: ${incident.count} ${typeLabel} في مناطق: ${locations}\n⏰ التوقيت: ${time}`
+      : `🔴 Field Update: ${incident.count} ${typeLabel} alerts in: ${locations}\n⏰ Time: ${time}`;
+  } else {
+    const description = incident.items?.[0]?.description || '';
+    summary = isAr
+      ? `🔴 تحديث ميداني: ${typeLabel} في ${incident.primaryLocation}\n📝 التفاصيل: ${description}\n⏰ التوقيت: ${time}`
+      : `🔴 Field Update: ${typeLabel} in ${incident.primaryLocation}\n📝 Details: ${description}\n⏰ Time: ${time}`;
+  }
+
+  return `${summary}\n\n📍 لمتابعة التحديثات المباشرة:\nhttps://redalerts-lebanon.online`;
+}
+
+function ShareButton({ incident, locale }) {
+  const [copied, setCopied] = useState(false);
+  const isAr = locale === 'ar';
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(buildEventSummary(incident, locale));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
+  };
+
+  const shareText = buildEventSummary(incident, locale);
+  const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(shareText)}`;
+
+  return (
+    <div className="mt-3 flex items-center gap-2 border-t border-white/10 pt-2">
+      <button
+        onClick={handleCopy}
+        className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-white/5 py-1.5 text-[10px] font-medium text-slate-300 transition hover:bg-white/10"
+        title={isAr ? 'نسخ الملخص' : 'Copy Summary'}
+      >
+        {copied ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
+        <span>{isAr ? 'نسخ' : 'Copy'}</span>
+      </button>
+      <a
+        href={whatsappUrl}
+        target="_blank"
+        rel="noreferrer"
+        className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-emerald-500/10 py-1.5 text-[10px] font-medium text-emerald-400 transition hover:bg-emerald-500/20"
+      >
+        <Share2 className="h-3 w-3" />
+        <span>{isAr ? 'واتساب' : 'WhatsApp'}</span>
+      </a>
+    </div>
+  );
+}
+
 function IncidentPopup({ incident, locale, t }) {
   const isCluster = incident.kind === 'cluster';
   const ageBucket = getAgeBucket(incident.timestamp);
@@ -350,6 +411,8 @@ function IncidentPopup({ incident, locale, t }) {
       <div className={`text-[0.65rem] font-medium ${timeColor}`}>
         {formatPopupTime(incident.timestamp, locale)}
       </div>
+
+      <ShareButton incident={incident} locale={locale} />
     </div>
   );
 }

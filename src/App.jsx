@@ -433,17 +433,43 @@ function IconTooltip({ label, children }) {
   );
 }
 
-function ShareButton({ event, locale }) {
-  const t = TRANSLATIONS[locale];
+function ShareButton({ item, locale, variant = 'default' }) {
   const [open, setOpen] = useState(false);
+  const t = TRANSLATIONS[locale];
 
   async function copySummary() {
     try {
-      await navigator.clipboard.writeText(buildEventSummary(event, locale));
+      await navigator.clipboard.writeText(buildEventSummary(item, locale));
       setOpen(false);
     } catch (_error) {
       // Ignore clipboard errors.
     }
+  }
+
+  if (variant === 'compact') {
+    return (
+      <div className="flex items-center gap-2">
+        <IconTooltip label={t.copySummary}>
+          <button
+            type="button"
+            onClick={copySummary}
+            className="grid h-8 w-8 place-items-center rounded-lg border border-white/10 bg-white/5 text-slate-200 transition hover:bg-white/10"
+          >
+            <Copy className="h-3.5 w-3.5" />
+          </button>
+        </IconTooltip>
+        <IconTooltip label={t.shareWhatsApp}>
+          <a
+            href={buildWhatsAppUrl(item, locale)}
+            target="_blank"
+            rel="noreferrer"
+            className="grid h-8 w-8 place-items-center rounded-lg border border-emerald-400/20 bg-emerald-500/10 text-emerald-300 transition hover:bg-emerald-500/20"
+          >
+            <Share2 className="h-3.5 w-3.5" />
+          </a>
+        </IconTooltip>
+      </div>
+    );
   }
 
   return (
@@ -471,7 +497,7 @@ function ShareButton({ event, locale }) {
             </IconTooltip>
             <IconTooltip label={t.shareWhatsApp}>
               <a
-                href={buildWhatsAppUrl(event, locale)}
+                href={buildWhatsAppUrl(item, locale)}
                 target="_blank"
                 rel="noreferrer"
                 className="grid h-9 w-9 place-items-center rounded-xl border border-emerald-400/20 bg-emerald-500/10 text-emerald-300 transition hover:bg-emerald-500/20"
@@ -619,7 +645,7 @@ function ReportCard({ event, locale, onFocus }) {
               </span>
             </p>
             <div className="flex shrink-0 items-center gap-2">
-              <ShareButton event={event} locale={locale} />
+              <ShareButton item={event} locale={locale} />
               <IconTooltip label={t.viewOnMap}>
                 <button
                   type="button"
@@ -756,14 +782,17 @@ function TelegramMessageDialog({ locale, message, onOpenChange }) {
                       {message?.channel} · {message ? formatAbsoluteTime(message.timestamp, locale) : ''}
                     </Dialog.Description>
                   </div>
-                  <Dialog.Close asChild>
-                    <button
-                      type="button"
-                      className="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs font-medium text-slate-200 transition hover:bg-white/10"
-                    >
-                      ✕
-                    </button>
-                  </Dialog.Close>
+                  <div className="flex items-center gap-3">
+                    <ShareButton item={message} locale={locale} variant="compact" />
+                    <Dialog.Close asChild>
+                      <button
+                        type="button"
+                        className="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs font-medium text-slate-200 transition hover:bg-white/10"
+                      >
+                        ✕
+                      </button>
+                    </Dialog.Close>
+                  </div>
                 </div>
                 <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
                   <p className="whitespace-pre-wrap text-sm leading-7 text-slate-200">

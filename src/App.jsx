@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import * as Accordion from '@radix-ui/react-accordion';
 import * as Dialog from '@radix-ui/react-dialog';
 import * as Tooltip from '@radix-ui/react-tooltip';
-import { SlidersHorizontal } from 'lucide-react';
+import { ChevronDown, ChevronUp, SlidersHorizontal } from 'lucide-react';
 import {
   Tabs,
   TabsList,
@@ -209,8 +209,20 @@ function formatWindowLabel(windowKey, locale) {
   if (windowKey === '30m') {
     return locale === 'ar' ? '\u0622\u062e\u0631 30 \u062f\u0642\u064a\u0642\u0629' : 'Last 30 min';
   }
+  if (windowKey === '1h') {
+    return locale === 'ar' ? '\u0622\u062e\u0631 \u0633\u0627\u0639\u0629' : 'Last 1h';
+  }
   if (windowKey === '2h') {
     return locale === 'ar' ? '\u0622\u062e\u0631 \u0633\u0627\u0639\u062a\u064a\u0646' : 'Last 2h';
+  }
+  if (windowKey === '3h') {
+    return locale === 'ar' ? '\u0622\u062e\u0631 3 \u0633\u0627\u0639\u0627\u062a' : 'Last 3h';
+  }
+  if (windowKey === '6h') {
+    return locale === 'ar' ? '\u0622\u062e\u0631 6 \u0633\u0627\u0639\u0627\u062a' : 'Last 6h';
+  }
+  if (windowKey === '12h') {
+    return locale === 'ar' ? '\u0622\u062e\u0631 12 \u0633\u0627\u0639\u0629' : 'Last 12h';
   }
   return locale === 'ar' ? '\u0622\u062e\u0631 24 \u0633\u0627\u0639\u0629' : 'Last 24h';
 }
@@ -894,7 +906,7 @@ function LanguageToggle({ locale, onToggle }) {
 }
 
 const FILTER_TYPES = ['all', 'drone', 'warplane', 'airstrike', 'carAttack', 'artillery', 'explosion', 'missile'];
-const FILTER_WINDOWS = ['30m', '2h', '24h'];
+const FILTER_WINDOWS = ['30m', '1h', '2h', '3h', '6h', '12h', '24h'];
 
 function getTypeFilterLabel(type, locale) {
   if (type === 'all') {
@@ -911,6 +923,7 @@ function App() {
   const [focusedEvent, setFocusedEvent] = useState(null);
   const [activeType, setActiveType] = useState('all');
   const [activeWindow, setActiveWindow] = useState('2h');
+  const [isTopAreaCollapsed, setIsTopAreaCollapsed] = useState(false);
   const shellRef = useRef(null);
 
   useEffect(() => {
@@ -972,8 +985,24 @@ function App() {
 
   return (
     <div ref={shellRef} className="workspace-shell min-h-screen text-slate-100" dir={t.dir}>
-      <div className="mx-auto flex min-h-screen max-w-[1800px] flex-col px-3 py-3 sm:px-4 sm:py-4 md:px-6 md:py-6">
-        <header className="workspace-header mb-2 flex flex-col gap-2 px-1 py-1 sm:mb-3 md:flex-row md:items-start md:justify-between md:gap-4">
+      <button
+        type="button"
+        onClick={() => setIsTopAreaCollapsed((current) => !current)}
+        aria-label={isTopAreaCollapsed ? 'Show top area' : 'Hide top area'}
+        className="fixed left-3 top-3 z-[1200] grid h-10 w-10 place-items-center rounded-full border border-white/12 bg-black/70 text-slate-100 shadow-xl shadow-black/30 backdrop-blur-xl transition hover:bg-black/85 hover:text-white"
+      >
+        {isTopAreaCollapsed ? <ChevronDown className="h-5 w-5" /> : <ChevronUp className="h-5 w-5" />}
+      </button>
+
+      <div
+        className={`mx-auto flex min-h-screen flex-col transition-all ${
+          isTopAreaCollapsed
+            ? 'max-w-none px-0 py-0'
+            : 'max-w-[1800px] px-3 py-3 sm:px-4 sm:py-4 md:px-6 md:py-6'
+        }`}
+      >
+        {!isTopAreaCollapsed && (
+        <header className="workspace-header mb-2 flex flex-col gap-2 px-1 py-1 pl-12 sm:mb-3 md:flex-row md:items-start md:justify-between md:gap-4">
           <div className="flex min-w-0 items-start gap-3">
             <span className="live-dot shrink-0" />
             <div className="min-w-0">
@@ -1022,8 +1051,10 @@ function App() {
             />
           </div>
         </header>
+        )}
 
-        <main className="relative flex-1 flex flex-col min-h-0">
+        <main className={`relative flex flex-1 flex-col ${isTopAreaCollapsed ? 'min-h-screen' : 'min-h-0'}`}>
+          {!isTopAreaCollapsed && (
           <div className="mb-3 hidden flex-col gap-2 md:mb-4 md:flex">
             <div className="flex items-center gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {FILTER_TYPES.map((type) => {
@@ -1071,7 +1102,9 @@ function App() {
               </div>
             </div>
           </div>
+          )}
 
+          {!isTopAreaCollapsed && (
           <div className="mb-3 flex flex-col gap-2 md:hidden">
             <div className="flex min-w-0 items-center gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               <LiveChannelButton
@@ -1185,6 +1218,7 @@ function App() {
               />
             </div>
           </div>
+          )}
 
           <MapComponent
             center={LEBANON_CENTER}

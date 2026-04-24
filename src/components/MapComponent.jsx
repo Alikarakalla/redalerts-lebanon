@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import { Circle, MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import { Info, ChevronDown, ChevronUp, Plus, Minus } from 'lucide-react';
 import * as Slider from '@radix-ui/react-slider';
 import L from 'leaflet';
@@ -120,10 +120,36 @@ function getMarkerStyle(type, timestamp) {
   };
 }
 
-function getMarkerRadius(severity, count = 1, zIndex) {
+function getMarkerRadius(severity, count = 1, zoomLevel = DEFAULT_ZOOM) {
   const base = severity === 'high' ? 12 : severity === 'medium' ? 9 : 7;
-  if (count <= 1) return base;
-  return Math.min(base + Math.log2(count + 1) * 3, 20);
+  const countBoost = count <= 1 ? 0 : Math.log2(count + 1) * 3;
+  const zoomScale = 0.42 + Math.max(0, Math.min(zoomLevel - 7, 7)) * 0.19;
+
+  return Math.min((base + countBoost) * zoomScale, 30);
+}
+
+function getCoverageRadiusMeters(type, severity, count = 1) {
+  const typeRadius = {
+    drone: 1450,
+    warplane: 2200,
+    airstrike: 1250,
+    carAttack: 700,
+    artillery: 1100,
+    explosion: 850,
+    missile: 1600,
+  };
+  const severityBoost = severity === 'high' ? 1.25 : severity === 'medium' ? 1.08 : 0.92;
+  const clusterBoost = count <= 1 ? 1 : Math.min(1 + Math.log2(count) * 0.18, 1.55);
+
+  return Math.round((typeRadius[type] ?? 900) * severityBoost * clusterBoost);
+}
+
+function getCoverageRadiusPixels(map, lat, lng, radiusMeters) {
+  const centerPoint = map.latLngToLayerPoint([lat, lng]);
+  const radiusLat = lat + radiusMeters / 111_320;
+  const edgePoint = map.latLngToLayerPoint([radiusLat, lng]);
+
+  return Math.max(Math.abs(centerPoint.y - edgePoint.y), 18);
 }
 
 function getSeverityScore(severity) {
@@ -139,8 +165,62 @@ function distanceKm(a, b) {
   return Math.sqrt(dLat * dLat + dLng * dLng);
 }
 
+function normalizeLocationKey(locationName) {
+  return String(locationName || 'unknown')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+}
+
+function dedupeNewestByVillageAndType(events) {
+  const newestByKey = new Map();
+
+  for (const event of events) {
+    const key = `${normalizeLocationKey(event.locationName)}:${event.type || 'default'}`;
+    const current = newestByKey.get(key);
+
+    if (!current || new Date(event.timestamp).getTime() > new Date(current.timestamp).getTime()) {
+      newestByKey.set(key, event);
+    }
+  }
+
+  return [...newestByKey.values()];
+}
+
+function offsetIncidentsWithSameVillage(incidents) {
+  const grouped = incidents.reduce((groups, incident) => {
+    const key = normalizeLocationKey(incident.primaryLocation);
+    const group = groups.get(key) || [];
+    group.push(incident);
+    groups.set(key, group);
+    return groups;
+  }, new Map());
+
+  for (const group of grouped.values()) {
+    if (group.length <= 1) {
+      continue;
+    }
+
+    const offsetMeters = 180;
+    const centerIndex = (group.length - 1) / 2;
+
+    group
+      .sort((a, b) => String(a.type).localeCompare(String(b.type)))
+      .forEach((incident, index) => {
+        const angle = -Math.PI / 2 + ((index - centerIndex) * (Math.PI * 2)) / Math.max(group.length, 4);
+        const latOffset = (Math.sin(angle) * offsetMeters) / 111_320;
+        const lngOffset = (Math.cos(angle) * offsetMeters) / (111_320 * Math.cos((incident.lat * Math.PI) / 180));
+
+        incident.lat += latOffset;
+        incident.lng += lngOffset;
+      });
+  }
+
+  return incidents;
+}
+
 function clusterEvents(events, locale, zoomLevel) {
-  const sorted = [...events].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+  const sorted = dedupeNewestByVillageAndType(events).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
   const clusters = [];
   
   // Dynamic clustering based on zoom
@@ -177,7 +257,7 @@ function clusterEvents(events, locale, zoomLevel) {
     });
   }
 
-  return clusters.map((cluster) => {
+  const incidents = clusters.map((cluster) => {
     const latestItem = cluster.items[0];
     const primaryLocation = [...cluster.locationNames][0];
 
@@ -205,9 +285,11 @@ function clusterEvents(events, locale, zoomLevel) {
           : MAP_TRANSLATIONS[locale].incidentIn(
               formatEventLabel(latestItem.type, locale),
               primaryLocation
-            ),
+        ),
     };
   });
+
+  return offsetIncidentsWithSameVillage(incidents);
 }
 
 function IncidentPopup({ incident, locale, t }) {
@@ -245,7 +327,117 @@ function IncidentPopup({ incident, locale, t }) {
   );
 }
 
-const customIcon = (color, opacity, count, zIndexBase, isFresh) => {
+function getEventMarkerSymbol(type) {
+  if (type === 'drone') {
+    return `
+      <path class="event-marker__symbol-stroke" d="M16 13.5v5M13.5 16h5M10.8 10.8l3 3M21.2 10.8l-3 3M10.8 21.2l3-3M21.2 21.2l-3-3" />
+      <rect x="12.2" y="12.2" width="7.6" height="7.6" rx="2.1" />
+      <circle cx="8.2" cy="8.2" r="4.4" />
+      <circle cx="23.8" cy="8.2" r="4.4" />
+      <circle cx="8.2" cy="23.8" r="4.4" />
+      <circle cx="23.8" cy="23.8" r="4.4" />
+      <circle class="event-marker__symbol-cutout" cx="8.2" cy="8.2" r="2" />
+      <circle class="event-marker__symbol-cutout" cx="23.8" cy="8.2" r="2" />
+      <circle class="event-marker__symbol-cutout" cx="8.2" cy="23.8" r="2" />
+      <circle class="event-marker__symbol-cutout" cx="23.8" cy="23.8" r="2" />
+    `;
+  }
+
+  if (type === 'warplane') {
+    return `
+      <path d="M16 2.8 19.9 19l7.1 2.9v2.4l-9.1-1.6L16 29.2l-1.9-6.5L5 24.3v-2.4L12.1 19 16 2.8Z" />
+    `;
+  }
+
+  if (type === 'missile') {
+    return `
+      <path d="M18.5 3.5c4.1 2.2 6.3 6.9 5.2 11.4l-7.9 7.9-6.6-6.6 7.9-7.9c.4-1.7.8-3.3 1.4-4.8Z" />
+      <path d="M9.4 16.3 5.2 18l3.1 3.1M15.7 22.6 14 26.8l-3.1-3.1" />
+      <path class="event-marker__symbol-stroke" d="M8.4 23.6 5.4 26.6M11.1 25.5 8.9 29" />
+    `;
+  }
+
+  if (type === 'carAttack') {
+    return `
+      <path d="M7.2 12.7 9.5 7.8h13l2.3 4.9 2.4 1.7v8.5h-3.5v-2.4H8.3v2.4H4.8v-8.5l2.4-1.7Z" />
+      <path class="event-marker__symbol-cutout" d="M10.5 10.2h11l1.1 2.6H9.4l1.1-2.6Z" />
+      <circle class="event-marker__symbol-cutout" cx="10.2" cy="17.4" r="1.9" />
+      <circle class="event-marker__symbol-cutout" cx="21.8" cy="17.4" r="1.9" />
+    `;
+  }
+
+  if (type === 'artillery') {
+    return `
+      <path d="M8.3 19.9 23.8 8.8l2.1 3L10.4 22.9Z" />
+      <path d="M6.7 20.5h9.5v3.7H6.7Z" />
+      <circle cx="9.2" cy="25" r="3.1" />
+      <circle cx="19.8" cy="25" r="3.1" />
+    `;
+  }
+
+  if (type === 'airstrike') {
+    return `
+      <path d="m16 2.8 2.1 8.2 6.8-5-2.9 7.9 8.2.9-7.5 3.8 5.8 6.2-8.2-2-1.9 8.2-4.2-7.3-7.2 4.4 3.1-7.8-8.3-1.1 7.5-3.7-5.7-6.3 8.1 2L16 2.8Z" />
+      <circle class="event-marker__symbol-cutout" cx="16" cy="16" r="3.1" />
+      <circle cx="16" cy="16" r="1.4" />
+    `;
+  }
+
+  if (type === 'explosion') {
+    return `
+      <path d="m16 3.2 2.7 7.1 6.9-3.1-3.1 6.9 7.1 2.7-7.1 2.7 3.1 6.9-6.9-3.1-2.7 7.1-2.7-7.1-6.9 3.1 3.1-6.9-7.1-2.7 7.1-2.7-3.1-6.9 6.9 3.1L16 3.2Z" />
+      <circle class="event-marker__symbol-cutout" cx="16" cy="16" r="3.3" />
+    `;
+  }
+
+  return `
+    <circle cx="16" cy="16" r="9" />
+    <path class="event-marker__symbol-cutout" d="M15 8h2v10h-2zM15 21h2v3h-2z" />
+  `;
+}
+
+const eventIcon = (type, color, opacity, count, radius, isFresh, coveragePixelRadius = 18) => {
+  const usesLargeOrbit = type === 'drone' || type === 'warplane' || type === 'missile';
+  const orbitSize = usesLargeOrbit ? Math.max(coveragePixelRadius * 2, 30) : Math.max(radius * 2.25, 24);
+  const size = usesLargeOrbit ? orbitSize + Math.max(radius * 2.1, 22) : Math.max(radius * 2.25, 24);
+  const centerSize = Math.max(size * 0.72, 18);
+  const badgeSize = usesLargeOrbit ? Math.max(radius * 2.25, 24) : centerSize;
+  const symbolSize = Math.max(centerSize * 0.72, 14);
+  const symbolClass = type === 'drone' || type === 'warplane' || type === 'missile'
+    ? 'event-marker__symbol event-marker__symbol--orbiting'
+    : 'event-marker__symbol';
+  const html = `
+    <div class="event-marker event-marker--${type} ${isFresh ? 'event-marker--fresh' : ''}" style="--event-color:${color};--event-opacity:${opacity};width:${size}px;height:${size}px;">
+      <div class="event-marker__radius" style="width:${badgeSize * 1.72}px;height:${badgeSize * 1.72}px;"></div>
+      ${type === 'airstrike' ? '<div class="event-marker__shockwave"></div><div class="event-marker__shockwave event-marker__shockwave--late"></div>' : ''}
+      <div class="event-marker__orbit" style="width:${orbitSize}px;height:${orbitSize}px;">
+        <svg class="${symbolClass}" width="${Math.max(badgeSize * 0.72, 14)}" height="${Math.max(badgeSize * 0.72, 14)}" viewBox="0 0 32 32" aria-hidden="true">
+          ${getEventMarkerSymbol(type)}
+        </svg>
+      </div>
+      <div class="event-marker__core" style="width:${badgeSize}px;height:${badgeSize}px;">
+        ${count > 1 ? `<span>${count}</span>` : `
+          <svg class="event-marker__core-symbol" width="${Math.max(badgeSize * 0.62, 13)}" height="${Math.max(badgeSize * 0.62, 13)}" viewBox="0 0 32 32" aria-hidden="true">
+            ${getEventMarkerSymbol(type)}
+          </svg>
+        `}
+      </div>
+    </div>
+  `;
+
+  return L.divIcon({
+    html,
+    className: 'custom-leaflet-marker custom-leaflet-marker--event',
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+  });
+};
+
+const customIcon = (type, color, opacity, count, zIndexBase, isFresh, coveragePixelRadius) => {
+  if (type in TYPE_STYLES) {
+    return eventIcon(type, color, opacity, count, zIndexBase, isFresh, coveragePixelRadius);
+  }
+
   const html = `
     <div style="position:relative;width:100%;height:100%;display:flex;align-items:center;justify-content:center;">
        ${isFresh ? `<div style="position:absolute;inset:-6px;border-radius:50%;border:1px solid ${color};animation:ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>` : ''}
@@ -291,19 +483,41 @@ function MapEvents({ events, focusedEvent, locale, onZoomChange }) {
     <>
       {mapData.map((incident) => {
         const style = getMarkerStyle(incident.type, incident.timestamp);
-        const radius = getMarkerRadius(incident.severity, incident.count);
+        const radius = getMarkerRadius(incident.severity, incident.count, zoomLevel);
+        const coverageRadiusMeters = getCoverageRadiusMeters(incident.type, incident.severity, incident.count);
+        const coveragePixelRadius = getCoverageRadiusPixels(map, incident.lat, incident.lng, coverageRadiusMeters);
         const isFresh = getAgeBucket(incident.timestamp) === 'fresh';
 
         return (
-          <Marker
-            key={incident.id}
-            position={[incident.lat, incident.lng]}
-            icon={customIcon(style.base, style.fillOpacity + 0.3, incident.count, radius, isFresh)}
-          >
-            <Popup className="custom-leaflet-popup" closeButton={false}>
-              <IncidentPopup incident={incident} locale={locale} />
-            </Popup>
-          </Marker>
+          <React.Fragment key={incident.id}>
+            <Circle
+              center={[incident.lat, incident.lng]}
+              radius={coverageRadiusMeters}
+              pathOptions={{
+                color: style.base,
+                fillColor: style.base,
+                fillOpacity: Math.min(style.fillOpacity * 0.42, 0.16),
+                opacity: Math.min(style.ringOpacity * 0.72, 0.82),
+                weight: isFresh ? 2 : 1,
+              }}
+            />
+            <Marker
+              position={[incident.lat, incident.lng]}
+              icon={customIcon(
+                incident.type,
+                style.base,
+                style.fillOpacity + 0.3,
+                incident.count,
+                radius,
+                isFresh,
+                coveragePixelRadius
+              )}
+            >
+              <Popup className="custom-leaflet-popup" closeButton={false}>
+                <IncidentPopup incident={incident} locale={locale} />
+              </Popup>
+            </Marker>
+          </React.Fragment>
         );
       })}
     </>
@@ -332,7 +546,16 @@ export default function MapComponent({
 
   const filteredEvents = useMemo(() => {
     const now = Date.now();
-    const limitMap = { '30m': 30, '2h': 120, '24h': 1440, all: Infinity };
+    const limitMap = {
+      '30m': 30,
+      '1h': 60,
+      '2h': 120,
+      '3h': 180,
+      '6h': 360,
+      '12h': 720,
+      '24h': 1440,
+      all: Infinity,
+    };
     const cutoffMinutes = limitMap[activeWindow] ?? 1440;
 
     return events.filter((e) => {
@@ -487,6 +710,150 @@ export default function MapComponent({
         .leaflet-popup-content { margin: 10px 14px !important; }
         .leaflet-control-attribution { background: rgba(0,0,0,0.5) !important; color: #666 !important; bottom: 5px !important; left: 10px !important; right: auto !important; position: absolute !important;}
         .leaflet-control-attribution a { color: #888 !important; }
+        .custom-leaflet-marker--event {
+          overflow: visible !important;
+        }
+        .event-marker {
+          position: relative;
+          display: grid;
+          place-items: center;
+          pointer-events: auto;
+        }
+        .event-marker__radius {
+          position: absolute;
+          left: 50%;
+          top: 50%;
+          border: 1px solid color-mix(in srgb, var(--event-color) 70%, transparent);
+          border-radius: 9999px;
+          background:
+            radial-gradient(circle, color-mix(in srgb, var(--event-color) 24%, transparent) 0 36%, transparent 37%),
+            color-mix(in srgb, var(--event-color) 12%, transparent);
+          box-shadow:
+            inset 0 0 14px color-mix(in srgb, var(--event-color) 24%, transparent),
+            0 0 14px color-mix(in srgb, var(--event-color) 38%, transparent);
+          opacity: 0.95;
+          transform: translate(-50%, -50%);
+        }
+        .event-marker__radius::after {
+          content: '';
+          position: absolute;
+          inset: 22%;
+          border: 1px solid color-mix(in srgb, var(--event-color) 42%, transparent);
+          border-radius: inherit;
+        }
+        .event-marker__shockwave {
+          position: absolute;
+          inset: 18%;
+          border: 1px solid color-mix(in srgb, var(--event-color) 86%, transparent);
+          border-radius: 9999px;
+          animation: airstrikeShockwave 1.8s ease-out infinite;
+        }
+        .event-marker__shockwave--late {
+          animation-delay: 0.9s;
+        }
+        .event-marker__orbit {
+          position: absolute;
+          display: grid;
+          place-items: start center;
+          border-radius: 9999px;
+          animation: eventMarkerOrbit 13s linear infinite;
+          transform-origin: center;
+        }
+        .event-marker__symbol {
+          fill: #fff7ed;
+          filter:
+            drop-shadow(0 1px 1px rgba(0, 0, 0, 0.95))
+            drop-shadow(0 0 5px color-mix(in srgb, var(--event-color) 92%, transparent));
+          transform: translateY(-50%);
+          transform-origin: center;
+        }
+        .event-marker__symbol--orbiting {
+          transform: translateY(-50%) rotate(90deg);
+        }
+        .event-marker--drone .event-marker__symbol--orbiting {
+          transform: translateY(-50%);
+        }
+        .event-marker--explosion .event-marker__orbit,
+        .event-marker--artillery .event-marker__orbit,
+        .event-marker--carAttack .event-marker__orbit,
+        .event-marker--airstrike .event-marker__orbit {
+          animation: none;
+          place-items: center;
+        }
+        .event-marker--explosion .event-marker__symbol,
+        .event-marker--artillery .event-marker__symbol,
+        .event-marker--carAttack .event-marker__symbol,
+        .event-marker--airstrike .event-marker__symbol {
+          transform: none;
+        }
+        .event-marker__symbol-stroke {
+          fill: none;
+          stroke: #fff7ed;
+          stroke-width: 2.4;
+          stroke-linecap: round;
+          stroke-linejoin: round;
+        }
+        .event-marker__symbol-cutout {
+          fill: color-mix(in srgb, var(--event-color) 35%, rgba(0,0,0,0.94));
+        }
+        .event-marker__core {
+          position: relative;
+          display: grid;
+          place-items: center;
+          border: 2px solid color-mix(in srgb, #fff 26%, var(--event-color));
+          border-radius: 9999px;
+          background:
+            radial-gradient(circle at 35% 28%, rgba(255,255,255,0.2), transparent 0 30%),
+            color-mix(in srgb, var(--event-color) 78%, rgba(0,0,0,0.48));
+          box-shadow:
+            0 0 0 2px rgba(0,0,0,0.55),
+            0 0 18px color-mix(in srgb, var(--event-color) 70%, transparent);
+          z-index: 2;
+        }
+        .event-marker__core span {
+          color: white;
+          font-size: 10px;
+          font-weight: 800;
+          line-height: 1;
+          text-shadow: 0 1px 2px rgba(0,0,0,0.85);
+        }
+        .event-marker__core-symbol {
+          fill: #fff7ed;
+          filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.95));
+        }
+        .event-marker__core-symbol .event-marker__symbol-stroke {
+          stroke: #fff7ed;
+          stroke-width: 2.7;
+        }
+        .event-marker__core-symbol .event-marker__symbol-cutout {
+          fill: color-mix(in srgb, var(--event-color) 30%, rgba(0,0,0,0.96));
+        }
+        .event-marker--fresh .event-marker__core {
+          animation: eventMarkerCorePulse 1.8s ease-in-out infinite;
+        }
+        @keyframes eventMarkerOrbit {
+          to {
+            transform: rotate(360deg);
+          }
+        }
+        @keyframes eventMarkerCorePulse {
+          0%, 100% {
+            box-shadow: 0 0 12px color-mix(in srgb, var(--event-color) 48%, transparent);
+          }
+          50% {
+            box-shadow: 0 0 24px color-mix(in srgb, var(--event-color) 78%, transparent);
+          }
+        }
+        @keyframes airstrikeShockwave {
+          0% {
+            opacity: 0.9;
+            transform: scale(0.45);
+          }
+          100% {
+            opacity: 0;
+            transform: scale(1.55);
+          }
+        }
       `}</style>
     </div>
   );

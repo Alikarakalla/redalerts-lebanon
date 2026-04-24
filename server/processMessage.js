@@ -156,12 +156,8 @@ function inferType(text) {
   if (includesArabic(text, ARABIC.warning) || normalized.includes('warning')) {
     return 'warning';
   }
-  if (normalized.includes(normalizeArabicText('#\u0645\u0642\u0627\u062a\u0644\u0627\u062a_\u062d\u0631\u0628\u064a\u0629'))) {
-    return 'warplane';
-  }
-  if (hasDroneSignal(text)) {
-    return 'drone';
-  }
+  // Drone and warplane detection is now handled by external API (alert-lb.com)
+  
   if (vehicleAttack) {
     return 'carAttack';
   }
@@ -170,9 +166,6 @@ function inferType(text) {
   }
   if (includesArabic(text, ARABIC.missileFall) || normalized.includes('missile')) {
     return 'missile';
-  }
-  if (hasDroneSignal(text)) {
-    return 'drone';
   }
   if (includesArabic(text, ARABIC.shelling) || normalized.includes('artillery') || normalized.includes('shell')) {
     return 'artillery';

@@ -97,6 +97,40 @@ async function syncTelegramAlertsToStore() {
   return { alerts, inserted };
 }
 
+async function fetchExternalAlerts() {
+  try {
+    const response = await fetch('https://alert-lb.com/api/alerts');
+    if (!response.ok) return [];
+    
+    const json = await response.json();
+    const externalAlerts = json.alerts || [];
+
+    return externalAlerts
+      .filter((a) => a.type === 'drone' || a.type === 'plane')
+      .map((a) => ({
+        id: a.id,
+        type: a.type === 'plane' ? 'warplane' : a.type,
+        lat: a.location?.latitude,
+        lng: a.location?.longitude,
+        timestamp: a.timestamp,
+        locationName: a.title?.split('—')?.[1]?.trim() || a.areas?.join('، ') || 'لبنان',
+        description: a.description,
+        verified: true,
+        severity: a.type === 'plane' ? 'high' : 'medium',
+        source: 'alert-lb',
+        sourceLabel: 'Alert LB',
+        resolvedLocation: true,
+        locationSource: 'alert-lb',
+        reliabilityScore: 1,
+        alertLevel: a.type === 'plane' ? 'red' : 'orange',
+      }))
+      .filter((a) => a.lat && a.lng);
+  } catch (error) {
+    console.error('[external] fetch failed:', error.message);
+    return [];
+  }
+}
+
 const CACHE_TTL_MS = 90_000;
 let alertsCache = { data: null, fetchedAt: 0, refreshing: false };
 
@@ -109,13 +143,27 @@ async function refreshAlertsCache() {
 
   try {
     const syncResult = await syncTelegramAlertsToStore();
+    const externalAlerts = await fetchExternalAlerts();
+    
     const windowStart = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const { alerts: storedAlerts } = await queryAlertHistory({
       from: windowStart,
       limit: 500,
       offset: 0,
     });
-    const alerts = storedAlerts.length > 0 ? storedAlerts : syncResult.alerts;
+
+    // Merge stored alerts with real-time external alerts
+    // We prioritize external alerts for drones and planes
+    const internalAlerts = storedAlerts.length > 0 ? storedAlerts : syncResult.alerts;
+    
+    // Filter out internal drones/planes if we have external ones
+    const filteredInternal = internalAlerts.filter(
+      (a) => a.type !== 'drone' && a.type !== 'warplane'
+    );
+
+    const alerts = [...externalAlerts, ...filteredInternal].sort(
+      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    );
 
     alertsCache.data = alerts;
     alertsCache.fetchedAt = Date.now();

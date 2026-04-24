@@ -16,6 +16,7 @@ const MAP_TRANSLATIONS = {
       warplane: 'Warplane',
       missile: 'Missile',
       drone: 'Drone',
+      warning: 'Warning',
       default: 'Incident',
     },
     legend: 'Legend',
@@ -30,6 +31,7 @@ const MAP_TRANSLATIONS = {
       warplane: 'Warplane',
       carAttack: 'Car Attack',
       strike: 'Strike / Explosion',
+      warning: 'Warning / Evacuation',
     },
   },
   ar: {
@@ -42,6 +44,7 @@ const MAP_TRANSLATIONS = {
       warplane: 'مقاتلات حربية',
       missile: 'صاروخ',
       drone: 'مسيرة',
+      warning: 'انذار',
       default: 'حادث',
     },
     legend: 'الدليل',
@@ -56,6 +59,7 @@ const MAP_TRANSLATIONS = {
       warplane: 'مقاتلات حربية',
       carAttack: 'استهداف سيارة',
       strike: 'غارة / انفجار',
+      warning: 'انذار / اخلاء',
     },
   },
 };
@@ -78,6 +82,7 @@ const TYPE_STYLES = {
   artillery: { base: '#fb7185' },
   explosion: { base: '#f43f5e' },
   missile: { base: '#a78bfa' },
+  warning: { base: '#ff4d00' },
   default: { base: '#94a3b8' },
 };
 
@@ -137,6 +142,7 @@ function getCoverageRadiusMeters(type, severity, count = 1) {
     artillery: 1100,
     explosion: 850,
     missile: 1600,
+    warning: 3500,
   };
   const severityBoost = severity === 'high' ? 1.25 : severity === 'medium' ? 1.08 : 0.92;
   const clusterBoost = count <= 1 ? 1 : Math.min(1 + Math.log2(count) * 0.18, 1.55);
@@ -150,6 +156,27 @@ function getCoverageRadiusPixels(map, lat, lng, radiusMeters) {
   const edgePoint = map.latLngToLayerPoint([radiusLat, lng]);
 
   return Math.max(Math.abs(centerPoint.y - edgePoint.y), 18);
+}
+
+function zoomToCoverageArea(map, lat, lng, radiusMeters) {
+  if (!map || typeof map.flyToBounds !== 'function') {
+    return;
+  }
+
+  const latLng = L.latLng(lat, lng);
+  const latOffset = radiusMeters / 111_320;
+  const lngOffset = radiusMeters / (111_320 * Math.cos((lat * Math.PI) / 180));
+  const bounds = L.latLngBounds(
+    [latLng.lat - latOffset, latLng.lng - lngOffset],
+    [latLng.lat + latOffset, latLng.lng + lngOffset]
+  );
+
+  map.flyToBounds(bounds, {
+    animate: true,
+    duration: 1.1,
+    maxZoom: 12,
+    padding: [64, 64],
+  });
 }
 
 function getSeverityScore(severity) {
@@ -390,6 +417,13 @@ function getEventMarkerSymbol(type) {
     `;
   }
 
+  if (type === 'warning') {
+    return `
+      <path d="M16 3L2 29h28L16 3z" fill="none" stroke="#fff7ed" stroke-width="2.5" />
+      <path d="M16 11v8" stroke="#fff7ed" stroke-width="3" stroke-linecap="round" />
+      <circle cx="16" cy="24" r="2" fill="#fff7ed" />
+    `;
+  }
   return `
     <circle cx="16" cy="16" r="9" />
     <path class="event-marker__symbol-cutout" d="M15 8h2v10h-2zM15 21h2v3h-2z" />
@@ -409,7 +443,7 @@ const eventIcon = (type, color, opacity, count, radius, isFresh, coveragePixelRa
   const html = `
     <div class="event-marker event-marker--${type} ${isFresh ? 'event-marker--fresh' : ''}" style="--event-color:${color};--event-opacity:${opacity};width:${size}px;height:${size}px;">
       <div class="event-marker__radius" style="width:${badgeSize * 1.72}px;height:${badgeSize * 1.72}px;"></div>
-      ${type === 'airstrike' ? '<div class="event-marker__shockwave"></div><div class="event-marker__shockwave event-marker__shockwave--late"></div>' : ''}
+      ${type === 'airstrike' || type === 'warning' ? '<div class="event-marker__shockwave"></div><div class="event-marker__shockwave event-marker__shockwave--late"></div>' : ''}
       <div class="event-marker__orbit" style="width:${orbitSize}px;height:${orbitSize}px;">
         <svg class="${symbolClass}" width="${Math.max(badgeSize * 0.72, 14)}" height="${Math.max(badgeSize * 0.72, 14)}" viewBox="0 0 32 32" aria-hidden="true">
           ${getEventMarkerSymbol(type)}
@@ -500,7 +534,14 @@ function MapEvents({ events, focusedEvent, locale, onZoomChange }) {
                 opacity: Math.min(style.ringOpacity * 0.72, 0.82),
                 weight: isFresh ? 2 : 1,
               }}
-            />
+              eventHandlers={{
+                click: () => zoomToCoverageArea(map, incident.lat, incident.lng, coverageRadiusMeters),
+              }}
+            >
+              <Popup className="custom-leaflet-popup" closeButton={false}>
+                <IncidentPopup incident={incident} locale={locale} />
+              </Popup>
+            </Circle>
             <Marker
               position={[incident.lat, incident.lng]}
               icon={customIcon(
@@ -512,6 +553,9 @@ function MapEvents({ events, focusedEvent, locale, onZoomChange }) {
                 isFresh,
                 coveragePixelRadius
               )}
+              eventHandlers={{
+                click: () => zoomToCoverageArea(map, incident.lat, incident.lng, coverageRadiusMeters),
+              }}
             >
               <Popup className="custom-leaflet-popup" closeButton={false}>
                 <IncidentPopup incident={incident} locale={locale} />
@@ -522,6 +566,20 @@ function MapEvents({ events, focusedEvent, locale, onZoomChange }) {
       })}
     </>
   );
+}
+
+function MapPanes() {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!map.getPane('labelPane')) {
+      const pane = map.createPane('labelPane');
+      pane.style.zIndex = 450;
+      pane.style.pointerEvents = 'none';
+    }
+  }, [map]);
+
+  return null;
 }
 
 export default function MapComponent({
@@ -577,12 +635,15 @@ export default function MapComponent({
           className="h-full w-full"
           style={{ height: '100%', width: '100%' }}
           minZoom={7}
-          maxZoom={14}
+          maxZoom={18}
           ref={mapRef}
         >
+          <MapPanes />
           <TileLayer
             attribution='&copy; <a href="https://carto.com/">CartoDB</a>'
-            url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+            maxZoom={18}
+            subdomains="abcd"
+            url="https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png"
           />
           <MapEvents 
             events={filteredEvents} 
@@ -590,41 +651,48 @@ export default function MapComponent({
             locale={locale} 
             onZoomChange={setZoom}
           />
+          <TileLayer
+            attribution=""
+            maxZoom={18}
+            pane="labelPane"
+            subdomains="abcd"
+            url="https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png"
+          />
         </MapContainer>
       </div>
 
       {/* Zoom Slider Overlay */}
-      <div className="absolute bottom-4 right-4 z-[400] flex flex-col items-center gap-3 rounded-full border border-white/10 bg-black/60 p-2 py-4 shadow-2xl backdrop-blur-xl sm:bottom-8 sm:right-8">
+      <div className="absolute bottom-6 right-3 z-[400] flex flex-col items-center gap-1.5 rounded-full border border-white/10 bg-black/70 p-1.5 shadow-2xl backdrop-blur-xl sm:bottom-8 sm:right-8">
         <button
-          onClick={() => handleZoomChange(Math.min(zoom + 1, 14))}
-          className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition hover:bg-white/10 hover:text-white"
+          onClick={() => handleZoomChange(Math.min(zoom + 1, 18))}
+          className="flex h-7 w-7 items-center justify-center rounded-full text-slate-300 transition hover:bg-white/10 hover:text-white"
         >
-          <Plus className="h-4 w-4" />
+          <Plus className="h-3.5 w-3.5" />
         </button>
 
         <Slider.Root
-          className="relative flex h-32 w-8 cursor-pointer touch-none select-none flex-col items-center"
+          className="relative flex h-20 w-7 cursor-pointer touch-none select-none flex-col items-center sm:h-24"
           value={[zoom]}
-          max={14}
+          max={18}
           min={7}
           step={0.1}
           orientation="vertical"
           onValueChange={([val]) => handleZoomChange(val)}
         >
-          <Slider.Track className="relative w-1 grow rounded-full bg-white/10">
+          <Slider.Track className="relative w-0.5 grow rounded-full bg-white/10">
             <Slider.Range className="absolute w-full rounded-full bg-red-500/50" />
           </Slider.Track>
           <Slider.Thumb
-            className="block h-4 w-4 rounded-full border-2 border-red-500 bg-white shadow-lg transition-transform hover:scale-110 focus:outline-none"
+            className="block h-3.5 w-3.5 rounded-full border-2 border-red-500 bg-white shadow-lg transition-transform hover:scale-110 focus:outline-none"
             aria-label="Zoom"
           />
         </Slider.Root>
 
         <button
           onClick={() => handleZoomChange(Math.max(zoom - 1, 7))}
-          className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition hover:bg-white/10 hover:text-white"
+          className="flex h-7 w-7 items-center justify-center rounded-full text-slate-300 transition hover:bg-white/10 hover:text-white"
         >
-          <Minus className="h-4 w-4" />
+          <Minus className="h-3.5 w-3.5" />
         </button>
       </div>
 
@@ -776,6 +844,7 @@ export default function MapComponent({
         .event-marker--explosion .event-marker__orbit,
         .event-marker--artillery .event-marker__orbit,
         .event-marker--carAttack .event-marker__orbit,
+        .event-marker--warning .event-marker__orbit,
         .event-marker--airstrike .event-marker__orbit {
           animation: none;
           place-items: center;
@@ -783,6 +852,7 @@ export default function MapComponent({
         .event-marker--explosion .event-marker__symbol,
         .event-marker--artillery .event-marker__symbol,
         .event-marker--carAttack .event-marker__symbol,
+        .event-marker--warning .event-marker__symbol,
         .event-marker--airstrike .event-marker__symbol {
           transform: none;
         }
@@ -852,6 +922,26 @@ export default function MapComponent({
           100% {
             opacity: 0;
             transform: scale(1.55);
+          }
+        }
+        .event-marker--warning .event-marker__shockwave {
+          animation: warningShockwave 1.5s ease-out infinite;
+          border-width: 3px;
+        }
+        @keyframes warningShockwave {
+          0% {
+            opacity: 1;
+            transform: scale(0.2);
+            border-color: var(--event-color);
+          }
+          50% {
+            opacity: 0.8;
+            border-color: #fff;
+          }
+          100% {
+            opacity: 0;
+            transform: scale(2.2);
+            border-color: var(--event-color);
           }
         }
       `}</style>

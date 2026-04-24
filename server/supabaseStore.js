@@ -202,9 +202,16 @@ async function queryAlertsFromFile(filters = {}) {
   };
 }
 
+let latestAlertsCache = { data: null, fetchedAt: 0 };
+const LATEST_ALERTS_TTL_MS = 60_000;
+
 async function getLatestAlertsFromSupabase(limit = 50) {
+  if (latestAlertsCache.data && Date.now() - latestAlertsCache.fetchedAt < LATEST_ALERTS_TTL_MS) {
+    return latestAlertsCache.data.slice(0, limit);
+  }
+
   const client = getSupabaseClient();
-  const rowLimit = normalizeLimit(limit);
+  const rowLimit = Math.max(limit, 200);
   const { data, error } = await client
     .from(config.supabaseAlertsTable)
     .select('*')
@@ -215,7 +222,9 @@ async function getLatestAlertsFromSupabase(limit = 50) {
     throw error;
   }
 
-  return (data || []).map(fromDatabaseRecord);
+  const normalizedData = (data || []).map(fromDatabaseRecord);
+  latestAlertsCache = { data: normalizedData, fetchedAt: Date.now() };
+  return normalizedData.slice(0, limit);
 }
 
 async function saveAlertToSupabase(alert) {
@@ -236,6 +245,9 @@ async function saveAlertToSupabase(alert) {
   if (error) {
     throw error;
   }
+
+  // Clear cache after a successful insert to ensure next check is accurate
+  latestAlertsCache.fetchedAt = 0;
 
   return { saved: true, alert: fromDatabaseRecord(data) };
 }

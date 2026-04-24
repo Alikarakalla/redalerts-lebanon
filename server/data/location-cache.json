@@ -663,5 +663,222 @@
     "resolved": true,
     "source": "nominatim",
     "label": "زغدريا"
+  },
+  "يانوح": {
+    "lat": 33.2596416,
+    "lng": 35.304319,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "يانوح"
+  },
+  "السكسكية": {
+    "lat": 33.4392479,
+    "lng": 35.283273,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "السكسكية"
+  },
+  "اللوبية": {
+    "lat": 33.4263626,
+    "lng": 35.2834068,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "اللوبية"
+  },
+  "الأنصارية": {
+    "lat": 33.4103338,
+    "lng": 35.2791116,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "الأنصارية"
+  },
+  "جنوب لبنان": {
+    "lat": 33.2855585,
+    "lng": 35.3038316,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "جنوب لبنان"
+  },
+  "الشمال": {
+    "lat": 34.3283902,
+    "lng": 35.9051467,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "الشمال"
+  },
+  "الريحان": {
+    "lat": 33.4458478,
+    "lng": 35.5654374,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "الريحان"
+  },
+  "النبطيه الفوقا": {
+    "lat": 33.3618797,
+    "lng": 35.4986586,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "النبطيه الفوقا"
+  },
+  "اللويزة": {
+    "lat": 33.4612711,
+    "lng": 35.5360923,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "اللويزة"
+  },
+  "عين بوسوار": {
+    "lat": 33.4692267,
+    "lng": 35.5260271,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "عين بوسوار"
+  },
+  "حاروف": {
+    "lat": 33.3742285,
+    "lng": 35.4430582,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "حاروف"
+  },
+  "حبوش": {
+    "lat": 33.4064525,
+    "lng": 35.4866438,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "حبوش"
+  },
+  "كفر جوز": {
+    "lat": 33.395241,
+    "lng": 35.4743502,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "كفر جوز"
+  },
+  "عدشيت": {
+    "lat": 33.2781192,
+    "lng": 35.483457,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "عدشيت"
+  },
+  "أرنون": {
+    "lat": 33.3339525,
+    "lng": 35.5272779,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "أرنون"
+  },
+  "الدوير": {
+    "lat": 33.3839021,
+    "lng": 35.4155428,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "الدوير"
+  },
+  "?????": {
+    "lat": 33.8750629,
+    "lng": 35.843409,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "?????"
+  },
+  "???": {
+    "lat": 33.8750629,
+    "lng": 35.843409,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "???"
+  },
+  "?????????": {
+    "lat": 33.8750629,
+    "lng": 35.843409,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "?????????"
+  },
+  "???? ???????": {
+    "lat": 33.8750629,
+    "lng": 35.843409,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "???? ???????"
+  },
+  "??????? ????": {
+    "lat": 33.8750629,
+    "lng": 35.843409,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "??????? ????"
+  },
+  "???????": {
+    "lat": 33.8750629,
+    "lng": 35.843409,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "???????"
+  },
+  "رون": {
+    "lat": 33.8966769,
+    "lng": 35.4783664,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "رون"
+  },
+  "????": {
+    "lat": 33.8750629,
+    "lng": 35.843409,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "????"
+  },
+  "???? ???": {
+    "lat": 33.8750629,
+    "lng": 35.843409,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "???? ???"
+  },
+  "زبقين": {
+    "lat": 33.1570441,
+    "lng": 35.2636388,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "زبقين"
+  },
+  "الطيري": {
+    "lat": 33.1423067,
+    "lng": 35.4028739,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "الطيري"
+  },
+  "tayri": {
+    "lat": 33.1423067,
+    "lng": 35.4028739,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "tayri"
+  },
+  "دير سريان": {
+    "lat": 33.2929068,
+    "lng": 35.4966389,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "دير سريان"
+  },
+  "الضاحية الجنوبية": {
+    "lat": 33.8452574,
+    "lng": 35.5070506,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "الضاحية الجنوبية"
+  },
+  "مرجعيون": {
+    "lat": 33.3592529,
+    "lng": 35.5902134,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "مرجعيون"
   }
 }

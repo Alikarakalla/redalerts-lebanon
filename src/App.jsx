@@ -105,6 +105,7 @@ const TRANSLATIONS = {
       warplane: 'Warplane',
       missile: 'Missile',
       drone: 'Drone',
+      warning: 'Warning',
       default: 'Incident',
     },
     severityLabels: {
@@ -160,6 +161,7 @@ const TRANSLATIONS = {
       warplane: '\u0645\u0642\u0627\u062a\u0644\u0627\u062a \u062d\u0631\u0628\u064a\u0629',
       missile: '\u0635\u0627\u0631\u0648\u062e',
       drone: '\u0645\u0633\u064a\u0631\u0629',
+      warning: '\u0627\u0646\u0630\u0627\u0631',
       default: '\u062d\u0627\u062f\u062b',
     },
     severityLabels: {
@@ -276,6 +278,9 @@ function useStrikeData() {
   const [events, setEvents] = useState([]);
   const [status, setStatus] = useState('connecting');
 
+  const hasLoadedOnceRef = useRef(false);
+  const previousIdsRef = useRef(new Set());
+
   useEffect(() => {
     let active = true;
 
@@ -292,9 +297,17 @@ function useStrikeData() {
         }
 
         const nextEvents = Array.isArray(payload.alerts) ? payload.alerts : [];
+        const incoming = hasLoadedOnceRef.current
+          ? nextEvents.filter((event) => !previousIdsRef.current.has(event.id))
+          : [];
+
         setEvents(
           nextEvents.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
         );
+        previousIdsRef.current = new Set(nextEvents.map((event) => event.id));
+        hasLoadedOnceRef.current = true;
+
+
         setStatus(nextEvents.length > 0 ? 'live' : 'empty');
       } catch (error) {
         if (!active) {
@@ -316,7 +329,10 @@ function useStrikeData() {
     };
   }, []);
 
-  return { events, status };
+  return {
+    events,
+    status,
+  };
 }
 
 function useTelegramFeed() {
@@ -893,19 +909,89 @@ function SidebarPanel({
   );
 }
 
-function LanguageToggle({ locale, onToggle }) {
+function FilterSheetButton({ locale, activeType, activeWindow, setActiveType, setActiveWindow }) {
   return (
-    <button
-      type="button"
-      onClick={onToggle}
-      className="shrink-0 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs font-medium text-slate-200 transition hover:bg-white/10"
-    >
-      {locale === 'ar' ? 'English' : '\u0627\u0644\u0639\u0631\u0628\u064a\u0629'}
-    </button>
+    <Sheet>
+      <SheetTrigger asChild>
+        <button
+          type="button"
+          className="flex h-10 shrink-0 items-center gap-2 rounded-full border border-white/10 bg-black/70 px-3 text-xs font-medium text-slate-200 shadow-xl shadow-black/30 backdrop-blur-xl transition hover:bg-black/85 hover:text-white"
+        >
+          <SlidersHorizontal className="h-4 w-4" />
+          <span className="hidden sm:inline">{locale === 'ar' ? '\u0627\u0644\u0641\u0644\u0627\u062a\u0631' : 'Filters'}</span>
+        </button>
+      </SheetTrigger>
+      <SheetContent side={locale === 'ar' ? 'left' : 'right'} className="w-[min(92vw,24rem)]">
+        <SheetHeader className="border-b border-white/10 pb-4">
+          <SheetTitle>{locale === 'ar' ? '\u0641\u0644\u0627\u062a\u0631 \u0627\u0644\u062e\u0631\u064a\u0637\u0629' : 'Map Filters'}</SheetTitle>
+          <SheetDescription>
+            {locale === 'ar'
+              ? '\u0627\u062e\u062a\u0631 \u0646\u0648\u0639 \u0627\u0644\u062d\u062f\u062b \u0648\u0627\u0644\u0646\u0637\u0627\u0642 \u0627\u0644\u0632\u0645\u0646\u064a.'
+              : 'Choose event types and time range.'}
+          </SheetDescription>
+        </SheetHeader>
+        <div className="flex flex-col gap-5 px-4 pb-6">
+          <div>
+            <p className="mb-3 text-[11px] font-medium uppercase tracking-[0.2em] text-slate-500">
+              {locale === 'ar' ? '\u0646\u0648\u0639 \u0627\u0644\u062d\u062f\u062b' : 'Event Type'}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {FILTER_TYPES.map((type) => {
+                const label = getTypeFilterLabel(type, locale);
+                const isActive = activeType === type;
+
+                return (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => setActiveType(type)}
+                    className={`rounded-full border px-3 py-2 text-xs font-medium transition ${
+                      isActive
+                        ? 'border-white/18 bg-white/12 text-white'
+                        : 'border-white/8 bg-white/[0.03] text-slate-400 hover:bg-white/[0.07] hover:text-slate-200'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div>
+            <p className="mb-3 text-[11px] font-medium uppercase tracking-[0.2em] text-slate-500">
+              {locale === 'ar' ? '\u0627\u0644\u0646\u0637\u0627\u0642 \u0627\u0644\u0632\u0645\u0646\u064a' : 'Time Range'}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {FILTER_WINDOWS.map((windowKey) => {
+                const label = formatWindowLabel(windowKey, locale);
+                const isActive = activeWindow === windowKey;
+
+                return (
+                  <button
+                    key={windowKey}
+                    type="button"
+                    onClick={() => setActiveWindow(windowKey)}
+                    className={`rounded-full border px-3 py-2 text-xs font-medium transition ${
+                      isActive
+                        ? 'border-white/18 bg-white/10 text-white'
+                        : 'border-white/8 bg-white/[0.03] text-slate-500 hover:bg-white/[0.07] hover:text-slate-200'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </SheetContent>
+    </Sheet>
   );
 }
 
-const FILTER_TYPES = ['all', 'drone', 'warplane', 'airstrike', 'carAttack', 'artillery', 'explosion', 'missile'];
+
+const FILTER_TYPES = ['all', 'drone', 'warplane', 'airstrike', 'carAttack', 'artillery', 'explosion', 'missile', 'warning'];
 const FILTER_WINDOWS = ['30m', '1h', '2h', '3h', '6h', '12h', '24h'];
 
 function getTypeFilterLabel(type, locale) {
@@ -923,7 +1009,7 @@ function App() {
   const [focusedEvent, setFocusedEvent] = useState(null);
   const [activeType, setActiveType] = useState('all');
   const [activeWindow, setActiveWindow] = useState('2h');
-  const [isTopAreaCollapsed, setIsTopAreaCollapsed] = useState(false);
+  const [isTopAreaCollapsed, setIsTopAreaCollapsed] = useState(true);
   const shellRef = useRef(null);
 
   useEffect(() => {
@@ -985,14 +1071,24 @@ function App() {
 
   return (
     <div ref={shellRef} className="workspace-shell min-h-screen text-slate-100" dir={t.dir}>
-      <button
-        type="button"
-        onClick={() => setIsTopAreaCollapsed((current) => !current)}
-        aria-label={isTopAreaCollapsed ? 'Show top area' : 'Hide top area'}
-        className="fixed left-3 top-3 z-[1200] grid h-10 w-10 place-items-center rounded-full border border-white/12 bg-black/70 text-slate-100 shadow-xl shadow-black/30 backdrop-blur-xl transition hover:bg-black/85 hover:text-white"
-      >
-        {isTopAreaCollapsed ? <ChevronDown className="h-5 w-5" /> : <ChevronUp className="h-5 w-5" />}
-      </button>
+
+      <div className="fixed left-3 top-3 z-[1200] flex max-w-[calc(100vw-1.5rem)] items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setIsTopAreaCollapsed((current) => !current)}
+          aria-label={isTopAreaCollapsed ? 'Show top area' : 'Hide top area'}
+          className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-black/70 text-slate-100 shadow-xl shadow-black/30 backdrop-blur-xl transition hover:bg-black/85 hover:text-white"
+        >
+          {isTopAreaCollapsed ? <ChevronDown className="h-5 w-5" /> : <ChevronUp className="h-5 w-5" />}
+        </button>
+        <FilterSheetButton
+          locale={locale}
+          activeType={activeType}
+          activeWindow={activeWindow}
+          setActiveType={setActiveType}
+          setActiveWindow={setActiveWindow}
+        />
+      </div>
 
       <div
         className={`mx-auto flex min-h-screen flex-col transition-all ${
@@ -1045,10 +1141,6 @@ function App() {
                 onClick={() => setActiveStreamId((current) => (current === 'almanar' ? null : 'almanar'))}
               />
             </div>
-            <LanguageToggle
-              locale={locale}
-              onToggle={() => setLocale((current) => (current === 'ar' ? 'en' : 'ar'))}
-            />
           </div>
         </header>
         )}
@@ -1211,17 +1303,11 @@ function App() {
               </Sheet>
 
               <div className="min-w-0 flex-1" />
-
-              <LanguageToggle
-                locale={locale}
-                onToggle={() => setLocale((current) => (current === 'ar' ? 'en' : 'ar'))}
-              />
             </div>
           </div>
           )}
 
           <MapComponent
-            center={LEBANON_CENTER}
             events={events}
             focusedEvent={focusedEvent}
             locale={locale}

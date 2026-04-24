@@ -21,6 +21,14 @@ const CITY_COORDINATES = {
   '\u0628\u0646\u062a \u062c\u0628\u064a\u0644': { lat: 33.1194, lng: 35.4331 },
   marjayoun: { lat: 33.3603, lng: 35.5919 },
   '\u0645\u0631\u062c\u0639\u064a\u0648\u0646': { lat: 33.3603, lng: 35.5919 },
+  'deir siryan': { lat: 33.2959, lng: 35.5427 },
+  'deir seriane': { lat: 33.2959, lng: 35.5427 },
+  '\u062f\u064a\u0631 \u0633\u0631\u064a\u0627\u0646': { lat: 33.2959, lng: 35.5427 },
+  qlayaa: { lat: 33.3261, lng: 35.5864 },
+  qleiaa: { lat: 33.3261, lng: 35.5864 },
+  '\u0627\u0644\u0642\u0644\u064a\u0639\u0629': { lat: 33.3261, lng: 35.5864 },
+  '\u0627\u0644\u0636\u0627\u062d\u064a\u0629': { lat: 33.8602, lng: 35.5098 },
+  '\u0627\u0644\u0636\u0627\u062d\u064a\u0629 \u0627\u0644\u062c\u0646\u0648\u0628\u064a\u0629': { lat: 33.8497, lng: 35.5187 },
   khiam: { lat: 33.3306, lng: 35.6508 },
   '\u0627\u0644\u062e\u064a\u0627\u0645': { lat: 33.3306, lng: 35.6508 },
   aitaroun: { lat: 33.1071, lng: 35.4675 },
@@ -57,6 +65,11 @@ const CITY_COORDINATES = {
   jouaiya: { lat: 33.2403, lng: 35.3875 },
   jwayya: { lat: 33.2403, lng: 35.3875 },
   '\u062c\u0648\u064a\u0627': { lat: 33.2403, lng: 35.3875 },
+  hanaway: { lat: 33.2568, lng: 35.2879 },
+  hanawey: { lat: 33.2568, lng: 35.2879 },
+  hanaouay: { lat: 33.2568, lng: 35.2879 },
+  '\u062d\u0646\u0627\u0648\u064a\u0647': { lat: 33.2568, lng: 35.2879 },
+  '\u062d\u0646\u0627\u0648\u064a\u0629': { lat: 33.2568, lng: 35.2879 },
   'borj rahhal': { lat: 33.2806, lng: 35.2758 },
   '\u0628\u0631\u062c \u0631\u062d\u0627\u0644': { lat: 33.2806, lng: 35.2758 },
   abbasiyyeh: { lat: 33.2781, lng: 35.2864 },
@@ -233,6 +246,9 @@ const CITY_COORDINATES = {
   'taraya': { lat: 34, lng: 36.05 },
   'طليا': { lat: 34.0167, lng: 36.1 },
   'talia': { lat: 34.0167, lng: 36.1 },
+  'deir amess': { lat: 33.2014, lng: 35.3356 },
+  'deir aames': { lat: 33.2014, lng: 35.3356 },
+  '\u062f\u064a\u0631 \u0639\u0627\u0645\u0635': { lat: 33.2014, lng: 35.3356 },
 };
 
 const CACHE_FILE = path.resolve(process.cwd(), 'server', 'data', 'location-cache.json');
@@ -414,16 +430,7 @@ async function geocodeLebanonLocation(location) {
 }
 
 export async function resolveCoordinates(location) {
-  // 1. Try high-precision geocoding first (OSM data matches map labels 100%)
-  const geocoded = await geocodeLebanonLocation(location);
-  if (geocoded) {
-    return {
-      ...geocoded,
-      source: 'geocoded',
-    };
-  }
-
-  // 2. Fallback to built-in estimates if geocoding is unavailable
+  // 1. Try built-in estimates first (extremely fast)
   const match = findKnownLocation(location);
   if (match) {
     return {
@@ -431,6 +438,15 @@ export async function resolveCoordinates(location) {
       resolved: true,
       source: 'builtin',
       label: location,
+    };
+  }
+
+  // 2. Fallback to high-precision geocoding (slower, hits external API)
+  const geocoded = await geocodeLebanonLocation(location);
+  if (geocoded) {
+    return {
+      ...geocoded,
+      source: 'geocoded',
     };
   }
 

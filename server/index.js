@@ -55,7 +55,7 @@ async function getTelegramAlerts() {
   const channels = config.telegramChannels.length > 0 ? config.telegramChannels : [undefined];
 
   for (const channel of channels) {
-    const channelMessages = await getChannelMessagesSince(24, channel, 400);
+    const channelMessages = await getChannelMessagesSince(24, channel, 100);
 
     for (const message of channelMessages) {
       const processed = await processMessage(message.text, message.channel);

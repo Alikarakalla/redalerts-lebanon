@@ -393,25 +393,31 @@ function useTelegramFeed() {
   };
 }
 
-function buildWhatsAppUrl(event, locale) {
-  const t = TRANSLATIONS[locale];
-  const text = [
-    t.whatsappTitle,
-    t.incidentIn(formatEventLabel(event.type, locale), event.locationName),
-    `${t.severityPrefix}: ${formatSeverityLabel(event.severity, locale)}`,
-    `${t.timePrefix}: ${formatAbsoluteTime(event.timestamp, locale)}`,
-  ].join('\n');
+function buildEventSummary(item, locale) {
+  const isAr = locale === 'ar';
+  
+  // If it's a telegram message
+  if (item.text && !item.locationName) {
+    const time = formatAbsoluteTime(item.timestamp, locale);
+    const summary = isAr 
+      ? `🔴 خبر عاجل (${item.channel}):\n${item.text}\n⏰ التوقيت: ${time}`
+      : `🔴 Breaking News (${item.channel}):\n${item.text}\n⏰ Time: ${time}`;
+    return `${summary}\n\n📍 لمتابعة التحديثات المباشرة:\nhttps://redalerts-lebanon.online`;
+  }
 
-  return `https://wa.me/?text=${encodeURIComponent(text)}`;
+  // If it's a mapped event
+  const time = formatAbsoluteTime(item.timestamp, locale);
+  const typeLabel = formatEventLabel(item.type, locale);
+  const summary = isAr
+    ? `🔴 تحديث ميداني: ${typeLabel} في ${item.locationName}\n⏰ التوقيت: ${time}`
+    : `🔴 Field Update: ${typeLabel} in ${item.locationName}\n⏰ Time: ${time}`;
+
+  return `${summary}\n\n📍 لمتابعة التحديثات المباشرة:\nhttps://redalerts-lebanon.online`;
 }
 
-function buildEventSummary(event, locale) {
-  const t = TRANSLATIONS[locale];
-  return [
-    t.incidentIn(formatEventLabel(event.type, locale), event.locationName),
-    `${event.locationName} · ${formatSeverityLabel(event.severity, locale)}`,
-    formatAbsoluteTime(event.timestamp, locale),
-  ].join('\n');
+function buildWhatsAppUrl(item, locale) {
+  const text = encodeURIComponent(buildEventSummary(item, locale));
+  return `https://wa.me/?text=${text}`;
 }
 
 function IconTooltip({ label, children }) {

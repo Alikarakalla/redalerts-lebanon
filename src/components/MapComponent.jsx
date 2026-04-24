@@ -331,10 +331,9 @@ function buildEventSummary(incident, locale) {
       ? `🔴 تحديث ميداني: ${incident.count} ${typeLabel} في مناطق: ${locations}\n⏰ التوقيت: ${time}`
       : `🔴 Field Update: ${incident.count} ${typeLabel} alerts in: ${locations}\n⏰ Time: ${time}`;
   } else {
-    const description = incident.items?.[0]?.description || '';
     summary = isAr
-      ? `🔴 تحديث ميداني: ${typeLabel} في ${incident.primaryLocation}\n📝 التفاصيل: ${description}\n⏰ التوقيت: ${time}`
-      : `🔴 Field Update: ${typeLabel} in ${incident.primaryLocation}\n📝 Details: ${description}\n⏰ Time: ${time}`;
+      ? `🔴 تحديث ميداني: ${typeLabel} في ${incident.primaryLocation}\n⏰ التوقيت: ${time}`
+      : `🔴 Field Update: ${typeLabel} in ${incident.primaryLocation}\n⏰ Time: ${time}`;
   }
 
   return `${summary}\n\n📍 لمتابعة التحديثات المباشرة:\nhttps://redalerts-lebanon.online`;

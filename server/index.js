@@ -108,17 +108,20 @@ async function refreshAlertsCache() {
   alertsCache.refreshing = true;
 
   try {
-    await syncTelegramAlertsToStore();
+    const syncResult = await syncTelegramAlertsToStore();
     const windowStart = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    const { alerts } = await queryAlertHistory({
+    const { alerts: storedAlerts } = await queryAlertHistory({
       from: windowStart,
       limit: 500,
       offset: 0,
     });
+    const alerts = storedAlerts.length > 0 ? storedAlerts : syncResult.alerts;
 
     alertsCache.data = alerts;
     alertsCache.fetchedAt = Date.now();
-    console.log(`[cache] alerts refreshed - ${alerts.length} items`);
+    console.log(
+      `[cache] alerts refreshed - ${alerts.length} items (${storedAlerts.length} stored, ${syncResult.alerts.length} synced, ${syncResult.inserted} inserted)`
+    );
   } catch (error) {
     console.error('[cache] refresh failed:', error.message);
   } finally {

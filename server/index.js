@@ -101,12 +101,20 @@ async function fetchExternalAlerts() {
   try {
     const response = await fetch('https://alert-lb.com/api/alerts', {
       headers: {
-        accept: 'application/json',
-        'user-agent': 'Mozilla/5.0 RedAlertsLebanon/1.0',
+        accept: 'application/json, text/plain, */*',
+        'accept-language': 'ar,en-US;q=0.9,en;q=0.8',
+        'cache-control': 'no-cache',
+        pragma: 'no-cache',
+        referer: 'https://alert-lb.com/ar/',
+        'sec-fetch-dest': 'empty',
+        'sec-fetch-mode': 'cors',
+        'sec-fetch-site': 'same-origin',
+        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36',
       },
     });
     if (!response.ok) {
-      console.error(`[external] Alert LB returned ${response.status}`);
+      const body = await response.text().catch(() => '');
+      console.error(`[external] Alert LB returned ${response.status}: ${body.slice(0, 180)}`);
       return [];
     }
     

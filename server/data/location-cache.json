@@ -880,5 +880,26 @@
     "resolved": true,
     "source": "nominatim",
     "label": "مرجعيون"
+  },
+  "الجيش": {
+    "lat": 33.8957042,
+    "lng": 35.4982425,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "الجيش"
+  },
+  "مستشفى": {
+    "lat": 34.5070621,
+    "lng": 36.2903637,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "مستشفى"
+  },
+  "الصوانة": {
+    "lat": 33.6402143,
+    "lng": 35.4326131,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "الصوانة"
   }
 }

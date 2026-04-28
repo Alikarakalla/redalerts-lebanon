@@ -99,7 +99,8 @@ async function syncTelegramAlertsToStore() {
 
 async function fetchExternalAlerts() {
   try {
-    const response = await fetch('https://alert-lb.com/api/alerts', {
+    const alertLbUrl = process.env.ALERT_LB_API_URL || 'https://alert-lb.com/api/alerts';
+    const response = await fetch(alertLbUrl, {
       headers: {
         accept: 'application/json, text/plain, */*',
         'accept-language': 'ar,en-US;q=0.9,en;q=0.8',

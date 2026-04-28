@@ -1,9 +1,10 @@
-﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import * as Accordion from '@radix-ui/react-accordion';
 import * as Dialog from '@radix-ui/react-dialog';
 import * as Tooltip from '@radix-ui/react-tooltip';
-import { ChevronDown, ChevronUp, SlidersHorizontal, Radio, MapPin } from 'lucide-react';
+import * as Slider from '@radix-ui/react-slider';
+import { ChevronDown, ChevronUp, SlidersHorizontal, Radio, MapPin, Pause, Play, RotateCcw, Minus, Plus, Info, Send } from 'lucide-react';
 import {
   Tabs,
   TabsList,
@@ -22,6 +23,43 @@ import {
 import MapComponent from './components/MapComponent';
 
 const LEBANON_CENTER = [33.8547, 35.8623];
+
+const TIMELINE_LEGEND = {
+  en: {
+    title: 'Legend',
+    fresh: 'Fresh event under 30 min',
+    recent: 'Recent event under 2 hours',
+    old: 'Older than 2 hours',
+    typeLegend: {
+      drone: 'Drone',
+      warplane: 'Warplane',
+      carAttack: 'Car Attack',
+      strike: 'Strike / Explosion',
+      warning: 'Warning / Evacuation',
+    },
+  },
+  ar: {
+    title: 'الدليل',
+    fresh: 'حدث جديد خلال أقل من 30 دقيقة',
+    recent: 'حدث حديث خلال أقل من ساعتين',
+    old: 'أقدم من ساعتين',
+    typeLegend: {
+      drone: 'مسيرة',
+      warplane: 'مقاتلات حربية',
+      carAttack: 'استهداف سيارة',
+      strike: 'غارة / انفجار',
+      warning: 'انذار / اخلاء',
+    },
+  },
+};
+
+const TIMELINE_LEGEND_COLORS = {
+  drone: '#f59e0b',
+  warplane: '#38bdf8',
+  carAttack: '#22c55e',
+  strike: '#f43f5e',
+  warning: '#ff4d00',
+};
 
 const LIVE_STREAMS = {
   mayadeen: {
@@ -56,6 +94,8 @@ const LIVE_STREAMS = {
     labelAr: '\u0627\u0644\u0645\u0646\u0627\u0631',
   },
 };
+
+const TELEGRAM_CHANNEL_URL = 'https://t.me/redlinkleb';
 
 const TRANSLATIONS = {
   en: {
@@ -300,6 +340,86 @@ function normalizeAlert(alert) {
   };
 }
 
+const WARPLANE_TTL_MINUTES = 20;
+
+function isExpiredWarplaneAlert(alert, now = Date.now()) {
+  if (alert?.type !== 'warplane') {
+    return false;
+  }
+
+  const eventTime = new Date(alert.timestamp).getTime();
+  if (!Number.isFinite(eventTime)) {
+    return false;
+  }
+
+  return now - eventTime > WARPLANE_TTL_MINUTES * 60 * 1000;
+}
+
+function filterExpiredAlerts(alerts, now = Date.now()) {
+  return alerts.filter((alert) => !isExpiredWarplaneAlert(alert, now));
+}
+
+function shouldIncludeLocalMapTestData() {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('testMap') === '0') {
+    return false;
+  }
+
+  return ['localhost', '127.0.0.1'].includes(window.location.hostname);
+}
+
+function getLocalMapTestAlerts() {
+  const now = new Date().toISOString();
+
+  return [
+    normalizeAlert({
+      id: 'test-region-warplane-south',
+      type: 'warplane',
+      title: 'Test Region Coverage - South',
+      locationName: 'Test Region South',
+      lat: 33.26,
+      lng: 35.30,
+      timestamp: now,
+      severity: 'high',
+      radiusKm: 22,
+      source: 'test',
+      sourceLabel: 'Local Test',
+      verified: true,
+    }),
+    normalizeAlert({
+      id: 'test-drone-inside-region',
+      type: 'drone',
+      title: 'Test Drone Inside Region',
+      locationName: 'Test Drone South',
+      lat: 33.20,
+      lng: 35.33,
+      timestamp: now,
+      severity: 'medium',
+      radiusKm: 8,
+      source: 'test',
+      sourceLabel: 'Local Test',
+      verified: true,
+    }),
+    normalizeAlert({
+      id: 'test-car-attack-south',
+      type: 'carAttack',
+      title: 'Test Car Attack',
+      locationName: 'Test Point South',
+      lat: 33.16,
+      lng: 35.25,
+      timestamp: now,
+      severity: 'medium',
+      source: 'test',
+      sourceLabel: 'Local Test',
+      verified: true,
+    }),
+  ];
+}
+
 const ALERT_LB_TYPES = new Set(['drone', 'plane', 'warplane']);
 
 function isAlertLbType(event) {
@@ -317,7 +437,11 @@ async function fetchInternalAlerts() {
 }
 
 async function fetchAlertLbAlerts() {
-  const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || ''}/api/alert-lb`);
+  // Use Cloudflare Worker URL if set (bypasses Vercel IP block),
+  // otherwise fall back to the Node.js backend /api/alert-lb.
+  const workerUrl = import.meta.env.VITE_ALERT_LB_WORKER_URL;
+  const url = workerUrl || `${import.meta.env.VITE_API_BASE_URL || ''}/api/alert-lb`;
+  const response = await fetch(url);
   if (!response.ok) {
     throw new Error(`Alert LB API returned ${response.status}`);
   }
@@ -355,33 +479,31 @@ function useStrikeData() {
           return;
         }
 
-        if (internalResult.status === 'rejected' && alertLbResult.status === 'rejected') {
-          throw new Error(`All alert sources failed: ${internalResult.reason?.message}; ${alertLbResult.reason?.message}`);
-        }
-
         const internalEvents = internalResult.status === 'fulfilled' ? internalResult.value : [];
         const alertLbEvents = alertLbResult.status === 'fulfilled' ? alertLbResult.value : [];
+
         const internalWithoutAlertLbTypes = alertLbEvents.length > 0
           ? internalEvents.filter((event) => !isAlertLbType(event))
           : internalEvents;
-        const nextEvents = [...alertLbEvents, ...internalWithoutAlertLbTypes];
+        const localTestEvents = shouldIncludeLocalMapTestData() ? getLocalMapTestAlerts() : [];
+        const nextEvents = filterExpiredAlerts(
+          [...alertLbEvents, ...internalWithoutAlertLbTypes, ...localTestEvents]
+        );
 
-        if (alertLbResult.status === 'rejected') {
-          console.warn('Failed to load Alert LB direct alerts:', alertLbResult.reason);
-        }
-        if (internalResult.status === 'rejected') {
-          console.warn('Failed to load internal alerts:', internalResult.reason);
-        }
-
-        const incoming = hasLoadedOnceRef.current
-          ? nextEvents.filter((event) => !previousIdsRef.current.has(event.id))
-          : [];
-
+        // Always set events (so test data shows up even if fetch fails)
         setEvents(
           nextEvents.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
         );
         previousIdsRef.current = new Set(nextEvents.map((event) => event.id));
         hasLoadedOnceRef.current = true;
+        setStatus(nextEvents.length > 0 ? 'live' : 'empty');
+
+        if (internalResult.status === 'rejected' && alertLbResult.status === 'rejected') {
+          console.error('All alert sources failed, showing local/test data if available');
+        }
+        const incoming = hasLoadedOnceRef.current
+          ? nextEvents.filter((event) => !previousIdsRef.current.has(event.id))
+          : [];
 
         if (incoming.length > 0) {
           playAlertTone();
@@ -1192,6 +1314,26 @@ function LatestEventsButton({ events, locale, onFocus }) {
     </Sheet>
   );
 }
+
+function TelegramChannelButton({ locale }) {
+  const isAr = locale === 'ar';
+  const label = isAr ? 'قناة تلغرام' : 'Telegram';
+
+  return (
+    <IconTooltip label={label}>
+      <a
+        href={TELEGRAM_CHANNEL_URL}
+        target="_blank"
+        rel="noreferrer"
+        aria-label={label}
+        className="flex h-10 shrink-0 items-center gap-2 rounded-full border border-white/10 bg-black/70 px-3 text-xs font-medium text-sky-200 shadow-xl shadow-black/30 backdrop-blur-xl transition hover:bg-black/85 hover:text-white"
+      >
+        <Send className="h-4 w-4" />
+        <span className="hidden sm:inline">{label}</span>
+      </a>
+    </IconTooltip>
+  );
+}
 const FILTER_TYPES = ['all', 'drone', 'warplane', 'airstrike', 'carAttack', 'artillery', 'explosion', 'missile', 'warning'];
 const FILTER_WINDOWS = ['30m', '1h', '2h', '3h', '6h', '12h', '24h'];
 
@@ -1203,6 +1345,301 @@ function getTypeFilterLabel(type, locale) {
   return formatEventLabel(type, locale);
 }
 
+function getTimelineTime(rangeHours, progress) {
+  const rangeMs = rangeHours * 60 * 60 * 1000;
+  const clampedProgress = Math.max(0, Math.min(progress, 100));
+  return Date.now() - rangeMs + (rangeMs * clampedProgress) / 100;
+}
+
+function formatTimelineTime(timestamp, locale) {
+  return new Intl.DateTimeFormat(getLocaleTag(locale), {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(timestamp));
+}
+
+function TimelinePlayback({
+  locale,
+  enabled,
+  playing,
+  rangeHours,
+  progress,
+  replayTime,
+  onEnable,
+  onPlayToggle,
+  onRangeChange,
+  onProgressChange,
+  onLive,
+  onZoomIn,
+  onZoomOut,
+}) {
+  const isAr = locale === 'ar';
+  const rangeOptions = [24, 48];
+  const legend = TIMELINE_LEGEND[locale] ?? TIMELINE_LEGEND.en;
+  const [legendOpen, setLegendOpen] = useState(false);
+  const [compact, setCompact] = useState(true);
+  const [isLightMap, setIsLightMap] = useState(false);
+
+  useEffect(() => {
+    const resolveLightMode = () => {
+      const urlTheme = new URLSearchParams(window.location.search).get('mapTheme');
+      const storedTheme = window.localStorage?.getItem('mapTheme');
+      const theme = urlTheme || storedTheme;
+
+      if (theme === 'light' || theme === 'dark') {
+        setIsLightMap(theme === 'light');
+        return;
+      }
+
+      setIsLightMap(window.matchMedia?.('(prefers-color-scheme: light)').matches ?? false);
+    };
+
+    resolveLightMode();
+    const mediaQuery = window.matchMedia?.('(prefers-color-scheme: light)');
+    mediaQuery?.addEventListener?.('change', resolveLightMode);
+    window.addEventListener('popstate', resolveLightMode);
+    return () => {
+      mediaQuery?.removeEventListener?.('change', resolveLightMode);
+      window.removeEventListener('popstate', resolveLightMode);
+    };
+  }, []);
+
+  const panelClass = isLightMap
+    ? 'border-slate-200/80 bg-white/92 text-slate-950 shadow-slate-300/50'
+    : 'border-white/10 bg-black/78 text-white shadow-black/50';
+  const mutedTextClass = isLightMap ? 'text-slate-500' : 'text-slate-400';
+  const mainTextClass = isLightMap ? 'text-slate-950' : 'text-slate-100';
+  const pillClass = isLightMap
+    ? 'border-slate-200 bg-slate-100/90'
+    : 'border-white/10 bg-white/[0.06]';
+  const ghostButtonClass = isLightMap
+    ? 'text-slate-600 hover:bg-slate-200/80 hover:text-slate-950'
+    : 'text-slate-300 hover:bg-white/10 hover:text-white';
+  const legendPanelClass = isLightMap
+    ? 'border-slate-200 bg-slate-50/90'
+    : 'border-white/10 bg-white/[0.04]';
+  const trackClass = isLightMap ? 'bg-slate-200' : 'bg-white/12';
+
+  if (compact) {
+    return (
+      <div className="pointer-events-none fixed inset-x-0 bottom-4 z-[1400] flex justify-center px-3 sm:bottom-6 lg:justify-start lg:pl-6">
+        <div className={`pointer-events-auto rounded-full border p-1.5 shadow-2xl backdrop-blur-xl ${panelClass}`}>
+          <button
+            type="button"
+            onClick={() => setCompact(false)}
+            aria-label="Show timeline"
+            className={`grid h-10 w-10 place-items-center rounded-full transition ${ghostButtonClass}`}
+          >
+            <ChevronUp className="h-5 w-5" />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="pointer-events-none fixed inset-x-0 bottom-4 z-[1400] flex justify-center px-3 sm:bottom-6 lg:justify-start lg:pl-6">
+      <div className={`pointer-events-auto w-full max-w-[38rem] rounded-2xl border px-3 py-2.5 shadow-2xl backdrop-blur-xl sm:px-4 ${panelClass}`}>
+        <AnimatePresence initial={false}>
+          {legendOpen && (
+            <motion.div
+              initial={{ height: 0, opacity: 0, y: 8 }}
+              animate={{ height: 'auto', opacity: 1, y: 0 }}
+              exit={{ height: 0, opacity: 0, y: 8 }}
+              transition={{ duration: 0.18, ease: 'easeOut' }}
+              className="mb-3 overflow-hidden"
+            >
+              <div className={`rounded-2xl border p-3 ${legendPanelClass}`} dir={isAr ? 'rtl' : 'ltr'}>
+                <div className="mb-3 flex items-center justify-between">
+                  <p className={`text-[11px] font-bold uppercase tracking-[0.18em] ${mainTextClass}`}>
+                    {legend.title}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setLegendOpen(false)}
+                    aria-label="Close legend"
+                    className={`grid h-7 w-7 place-items-center rounded-full transition ${ghostButtonClass}`}
+                  >
+                    <ChevronDown className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-[1fr_1px_1fr]">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-3 text-xs font-medium">
+                      <span className={mainTextClass}>{legend.fresh}</span>
+                      <span className="flex h-3 w-3 shrink-0 items-center justify-center rounded-full bg-red-500/80 ring-[3px] ring-red-500/30">
+                        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-3 text-xs font-medium">
+                      <span className={mutedTextClass}>{legend.recent}</span>
+                      <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-red-500/60" />
+                    </div>
+                    <div className="flex items-center justify-between gap-3 text-xs font-medium">
+                      <span className="text-slate-500">{legend.old}</span>
+                      <span className="h-2 w-2 shrink-0 rounded-full border border-slate-600 bg-slate-800" />
+                    </div>
+                  </div>
+
+                  <div className="hidden bg-white/10 sm:block" />
+
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-1">
+                    {Object.entries(legend.typeLegend).map(([key, label]) => (
+                      <div key={key} className="flex items-center justify-between gap-3 text-xs font-medium">
+                        <span className={mainTextClass}>{label}</span>
+                        <span
+                          className="h-2 w-2 shrink-0 rounded-full"
+                          style={{ backgroundColor: TIMELINE_LEGEND_COLORS[key] ?? '#94a3b8' }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <div className="flex flex-wrap items-center gap-2.5 sm:flex-nowrap">
+          <button
+            type="button"
+            onClick={() => {
+              onEnable();
+              onPlayToggle();
+            }}
+            aria-label={playing ? 'Pause timeline' : 'Play timeline'}
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white text-black transition hover:scale-105"
+          >
+            {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 fill-current" />}
+          </button>
+
+          <div className="min-w-[8rem] flex-1">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className={`truncate text-[11px] font-semibold uppercase tracking-[0.18em] ${mutedTextClass}`}>
+                  {isAr ? '\u0627\u0644\u062e\u0637 \u0627\u0644\u0632\u0645\u0646\u064a' : 'Timeline'}
+                </p>
+                <p className={`truncate text-xs font-medium ${mainTextClass}`}>
+                  {enabled
+                    ? formatTimelineTime(replayTime, locale)
+                    : isAr
+                      ? '\u0645\u0628\u0627\u0634\u0631'
+                      : 'Live'}
+                </p>
+              </div>
+
+              <div className={`flex shrink-0 items-center gap-1 rounded-full border p-1 ${pillClass}`}>
+                {rangeOptions.map((hours) => (
+                  <button
+                    key={hours}
+                    type="button"
+                    onClick={() => {
+                      onEnable();
+                      onRangeChange(hours);
+                    }}
+                    className={`rounded-full px-2.5 py-1 text-[11px] font-semibold transition ${
+                      rangeHours === hours
+                        ? isLightMap
+                          ? 'bg-slate-950 text-white'
+                          : 'bg-white text-black'
+                        : isLightMap
+                          ? 'text-slate-500 hover:text-slate-950'
+                          : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    {hours}h
+                  </button>
+                  ))}
+              </div>
+            </div>
+          </div>
+
+          <div className={`flex shrink-0 items-center gap-1 rounded-full border p-1 ${pillClass}`}>
+            <button
+              type="button"
+              onClick={() => setLegendOpen((current) => !current)}
+              aria-label={legendOpen ? 'Hide legend' : 'Show legend'}
+              className={`grid h-8 w-8 place-items-center rounded-full transition ${
+                legendOpen
+                  ? isLightMap
+                    ? 'bg-slate-950 text-white'
+                    : 'bg-white text-black'
+                  : ghostButtonClass
+              }`}
+            >
+              <Info className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={onZoomOut}
+              aria-label="Zoom out"
+              className={`grid h-8 w-8 place-items-center rounded-full transition ${ghostButtonClass}`}
+            >
+              <Minus className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={onZoomIn}
+              aria-label="Zoom in"
+              className={`grid h-8 w-8 place-items-center rounded-full transition ${ghostButtonClass}`}
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={onLive}
+              aria-label="Return to live"
+              className={`grid h-8 w-8 place-items-center rounded-full border transition ${
+                enabled
+                  ? isLightMap
+                    ? 'border-slate-200 bg-white text-slate-600 hover:bg-slate-200/80 hover:text-slate-950'
+                    : 'border-white/15 bg-white/[0.06] text-slate-200 hover:bg-white/[0.1]'
+                  : 'border-red-400/40 bg-red-500/15 text-red-200'
+              }`}
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setLegendOpen(false);
+                setCompact(true);
+              }}
+              aria-label="Hide timeline"
+              className={`grid h-8 w-8 place-items-center rounded-full transition ${ghostButtonClass}`}
+            >
+              <ChevronDown className="h-3.5 w-3.5" />
+            </button>
+          </div>
+
+          <Slider.Root
+            className="relative flex h-5 w-full cursor-pointer touch-none select-none items-center"
+            value={[progress]}
+            min={0}
+            max={100}
+            step={0.25}
+            onValueChange={([value]) => {
+              onEnable();
+              onProgressChange(value);
+            }}
+          >
+            <Slider.Track className={`relative h-1.5 grow overflow-hidden rounded-full ${trackClass}`}>
+              <Slider.Range className="absolute h-full rounded-full bg-red-500" />
+            </Slider.Track>
+            <Slider.Thumb
+              className="block h-4 w-4 rounded-full border-2 border-red-500 bg-white shadow-lg focus:outline-none"
+              aria-label="Timeline"
+            />
+          </Slider.Root>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const { events, status } = useStrikeData();
   const [locale, setLocale] = useState('ar');
@@ -1211,11 +1648,33 @@ function App() {
   const [activeType, setActiveType] = useState('all');
   const [activeWindow, setActiveWindow] = useState('2h');
   const [isTopAreaCollapsed, setIsTopAreaCollapsed] = useState(true);
+  const [timelineEnabled, setTimelineEnabled] = useState(false);
+  const [timelinePlaying, setTimelinePlaying] = useState(false);
+  const [timelineRangeHours, setTimelineRangeHours] = useState(24);
+  const [timelineProgress, setTimelineProgress] = useState(100);
   const shellRef = useRef(null);
 
   useEffect(() => {
     fetch(`${import.meta.env.VITE_API_BASE_URL || ''}/api/track`, { method: 'POST' }).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!timelinePlaying) {
+      return undefined;
+    }
+
+    const interval = setInterval(() => {
+      setTimelineProgress((current) => {
+        const next = Math.min(current + 0.35, 100);
+        if (next >= 100) {
+          setTimelinePlaying(false);
+        }
+        return next;
+      });
+    }, 450);
+
+    return () => clearInterval(interval);
+  }, [timelinePlaying]);
 
   useEffect(() => {
     const shell = shellRef.current;
@@ -1258,6 +1717,11 @@ function App() {
   const t = TRANSLATIONS[locale];
   const activeStream = activeStreamId ? LIVE_STREAMS[activeStreamId] : null;
   const activeWindowLabel = formatWindowLabel(activeWindow, locale);
+  const replayTime = getTimelineTime(timelineRangeHours, timelineProgress);
+  const replayStartTime = Date.now() - timelineRangeHours * 60 * 60 * 1000;
+  const requestMapZoom = (delta) => {
+    window.dispatchEvent(new CustomEvent('redalerts:map-zoom', { detail: { delta } }));
+  };
 
   const statusText =
     status === 'live'
@@ -1283,6 +1747,7 @@ function App() {
           {isTopAreaCollapsed ? <ChevronDown className="h-5 w-5" /> : <ChevronUp className="h-5 w-5" />}
         </button>
         <LatestEventsButton events={events} locale={locale} onFocus={setFocusedEvent} />
+        <TelegramChannelButton locale={locale} />
         <FilterSheetButton
           locale={locale}
           activeType={activeType}
@@ -1291,6 +1756,34 @@ function App() {
           setActiveWindow={setActiveWindow}
         />
       </div>
+
+      <TimelinePlayback
+        locale={locale}
+        enabled={timelineEnabled}
+        playing={timelinePlaying}
+        rangeHours={timelineRangeHours}
+        progress={timelineProgress}
+        replayTime={replayTime}
+        onEnable={() => setTimelineEnabled(true)}
+        onPlayToggle={() => {
+          setTimelineEnabled(true);
+          setTimelinePlaying((current) => !current);
+        }}
+        onRangeChange={setTimelineRangeHours}
+        onProgressChange={(value) => {
+          setTimelineProgress(value);
+          if (value >= 100) {
+            setTimelinePlaying(false);
+          }
+        }}
+        onLive={() => {
+          setTimelineEnabled(false);
+          setTimelinePlaying(false);
+          setTimelineProgress(100);
+        }}
+        onZoomIn={() => requestMapZoom(1)}
+        onZoomOut={() => requestMapZoom(-1)}
+      />
 
       <div
         className={`mx-auto flex min-h-screen flex-col transition-all ${
@@ -1515,6 +2008,8 @@ function App() {
             locale={locale}
             activeType={activeType}
             activeWindow={activeWindow}
+            replayTime={timelineEnabled ? replayTime : null}
+            replayStartTime={timelineEnabled ? replayStartTime : null}
           />
         </main>
       </div>

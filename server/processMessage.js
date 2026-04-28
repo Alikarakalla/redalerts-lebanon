@@ -27,6 +27,11 @@ const ARABIC = {
   truck: '\u0634\u0627\u062d\u0646\u0629',
   injuries: '\u0627\u0635\u0627\u0628\u0627\u062a',
   warning: '\u0627\u0646\u0630\u0627\u0631',
+  urgentWarning: '\u0627\u0646\u0630\u0627\u0631 \u0639\u0627\u062c\u0644',
+  evacuation: '\u0627\u062e\u0644\u0627\u0621',
+  residents: '\u0633\u0643\u0627\u0646',
+  villages: '\u0627\u0644\u0642\u0631\u0649',
+  towns: '\u0627\u0644\u0628\u0644\u062f\u0627\u062a',
 };
 
 const LOCATION_PREFIXES = [
@@ -149,11 +154,37 @@ function hasDroneSignal(text) {
   );
 }
 
+function hasExplicitWarningSignal(text) {
+  const normalized = normalizeArabicText(text);
+
+  const explicitWarningPhrases = [
+    ARABIC.urgentWarning,
+    ARABIC.evacuation,
+    '\u0627\u0644\u0649 \u0633\u0643\u0627\u0646',
+    '\u0625\u0644\u0649 \u0633\u0643\u0627\u0646',
+    '\u0644\u0633\u0643\u0627\u0646',
+    '\u0627\u0644\u0645\u062a\u0648\u0627\u062c\u062f\u064a\u0646 \u0641\u064a \u0627\u0644\u0642\u0631\u0649',
+    '\u0627\u0644\u0645\u062a\u0648\u0627\u062c\u062f\u064a\u0646 \u0641\u064a \u0627\u0644\u0628\u0644\u062f\u0627\u062a',
+  ];
+
+  if (explicitWarningPhrases.some((phrase) => includesArabic(text, phrase))) {
+    return true;
+  }
+
+  const mentionsWarningWord = includesArabic(text, ARABIC.warning) || normalized.includes('warning');
+  const mentionsCivilianScope =
+    includesArabic(text, ARABIC.residents) ||
+    includesArabic(text, ARABIC.villages) ||
+    includesArabic(text, ARABIC.towns);
+
+  return mentionsWarningWord && mentionsCivilianScope;
+}
+
 function inferType(text) {
   const normalized = normalizeArabicText(text);
   const vehicleAttack = hasVehicleMention(text) && hasVehicleAttackSignal(text);
 
-  if (includesArabic(text, ARABIC.warning) || normalized.includes('warning')) {
+  if (hasExplicitWarningSignal(text)) {
     return 'warning';
   }
   // Drone and warplane detection is now handled by external API (alert-lb.com)
@@ -188,7 +219,7 @@ function severityFromText(text) {
   const normalized = normalizeArabicText(text);
   const vehicleAttack = hasVehicleMention(text) && hasVehicleAttackSignal(text);
 
-  if (includesArabic(text, ARABIC.warning) || normalized.includes('warning')) {
+  if (hasExplicitWarningSignal(text)) {
     return 'high';
   }
   if (normalized.includes(normalizeArabicText('#\u0645\u0642\u0627\u062a\u0644\u0627\u062a_\u062d\u0631\u0628\u064a\u0629'))) {
@@ -239,7 +270,7 @@ function isConflictEvent(text) {
     includesArabic(text, ARABIC.raid) ||
     includesArabic(text, ARABIC.targeting) ||
     hasDroneSignal(text) ||
-    includesArabic(text, ARABIC.warning) ||
+    hasExplicitWarningSignal(text) ||
     /strike|raid|drone|shell|artillery|missile|blast|explosion|airstrike|targeted|warning/i.test(text)
   );
 }

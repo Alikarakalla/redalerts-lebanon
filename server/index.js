@@ -99,6 +99,8 @@ async function syncTelegramAlertsToStore() {
 
 async function fetchExternalAlerts() {
   try {
+    // If ALERT_LB_API_URL is provided (e.g. Cloudflare Worker), use it.
+    // Otherwise, it falls back to the default direct URL which likely 403s on datacenters.
     const alertLbUrl = process.env.ALERT_LB_API_URL || 'https://alert-lb.com/api/alerts';
     const response = await fetch(alertLbUrl, {
       headers: {
@@ -158,6 +160,24 @@ async function fetchExternalAlerts() {
 
 const CACHE_TTL_MS = 90_000;
 let alertsCache = { data: null, fetchedAt: 0, refreshing: false };
+const WARPLANE_TTL_MS = 20 * 60 * 1000;
+
+function isExpiredWarplaneAlert(alert, now = Date.now()) {
+  if (alert?.type !== 'warplane') {
+    return false;
+  }
+
+  const eventTime = new Date(alert.timestamp).getTime();
+  if (!Number.isFinite(eventTime)) {
+    return false;
+  }
+
+  return now - eventTime > WARPLANE_TTL_MS;
+}
+
+function filterExpiredWarplanes(alerts, now = Date.now()) {
+  return alerts.filter((alert) => !isExpiredWarplaneAlert(alert, now));
+}
 
 async function refreshAlertsCache() {
   if (alertsCache.refreshing) {
@@ -167,6 +187,7 @@ async function refreshAlertsCache() {
   alertsCache.refreshing = true;
 
   try {
+    const now = Date.now();
     let syncResult = { alerts: [], inserted: 0 };
     try {
       syncResult = await syncTelegramAlertsToStore();
@@ -174,7 +195,7 @@ async function refreshAlertsCache() {
       console.warn('[cache] telegram sync failed, using stored alerts:', error.message);
     }
 
-    const externalAlerts = await fetchExternalAlerts();
+    const externalAlerts = filterExpiredWarplanes(await fetchExternalAlerts(), now);
     
     const windowStart = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const { alerts: storedAlerts } = await queryAlertHistory({
@@ -188,11 +209,11 @@ async function refreshAlertsCache() {
     const internalAlerts = storedAlerts.length > 0 ? storedAlerts : syncResult.alerts;
     
     // Filter out internal drones/planes if we have external ones
-    const filteredInternal = internalAlerts.filter(
+    const filteredInternal = filterExpiredWarplanes(internalAlerts, now).filter(
       (a) => a.type !== 'drone' && a.type !== 'warplane'
     );
 
-    const alerts = [...externalAlerts, ...filteredInternal].sort(
+    const alerts = filterExpiredWarplanes([...externalAlerts, ...filteredInternal], now).sort(
       (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
     );
 
@@ -210,11 +231,19 @@ async function refreshAlertsCache() {
 
 app.get('/api/alerts', async (_req, res) => {
   if (alertsCache.data && Date.now() - alertsCache.fetchedAt < CACHE_TTL_MS) {
-    return res.json({ alerts: alertsCache.data, cached: true, storage: getStorageMode() });
+    return res.json({
+      alerts: filterExpiredWarplanes(alertsCache.data),
+      cached: true,
+      storage: getStorageMode(),
+    });
   }
 
   if (alertsCache.data) {
-    res.json({ alerts: alertsCache.data, cached: true, storage: getStorageMode() });
+    res.json({
+      alerts: filterExpiredWarplanes(alertsCache.data),
+      cached: true,
+      storage: getStorageMode(),
+    });
     refreshAlertsCache();
     return;
   }

@@ -65,7 +65,9 @@ const MAP_TRANSLATIONS = {
 };
 
 const DEFAULT_CENTER = [33.8547, 35.8623]; // Lebanon center
-const DEFAULT_ZOOM = 8;
+const DEFAULT_ZOOM = 9;
+const MIN_ZOOM = 8;
+const MAX_ZOOM = 18;
 const FOCUSED_ZOOM = 11;
 
 const LEBANON_BOUNDS = { minLng: 35.0, maxLng: 36.7, minLat: 33.0, maxLat: 34.8 };
@@ -133,7 +135,12 @@ function getMarkerRadius(severity, count = 1, zoomLevel = DEFAULT_ZOOM) {
   return Math.min((base + countBoost) * zoomScale, 30);
 }
 
-function getCoverageRadiusMeters(type, severity, count = 1) {
+function getCoverageRadiusMeters(type, severity, count = 1, radiusKm = null) {
+  const explicitRadiusKm = Number(radiusKm);
+  if (Number.isFinite(explicitRadiusKm) && explicitRadiusKm > 0) {
+    return Math.round(explicitRadiusKm * 1000);
+  }
+
   const typeRadius = {
     drone: 1450,
     warplane: 2200,
@@ -159,37 +166,18 @@ function getCoverageRadiusPixels(map, lat, lng, radiusMeters) {
 }
 
 function zoomToCoverageArea(map, lat, lng, radiusMeters) {
-  if (!map || typeof map.flyToBounds !== 'function') {
-    return;
-  }
-
-  const latLng = L.latLng(lat, lng);
+  if (!map) return;
   const latOffset = radiusMeters / 111_320;
   const lngOffset = radiusMeters / (111_320 * Math.cos((lat * Math.PI) / 180));
   const bounds = L.latLngBounds(
-    [latLng.lat - latOffset, latLng.lng - lngOffset],
-    [latLng.lat + latOffset, latLng.lng + lngOffset]
+    [lat - latOffset, lng - lngOffset],
+    [lat + latOffset, lng + lngOffset]
   );
-
   map.flyToBounds(bounds, {
     animate: true,
-    duration: 1.1,
-    maxZoom: 12,
-    padding: [64, 64],
+    duration: 1.0,
+    padding: [32, 32],
   });
-}
-
-function getSeverityScore(severity) {
-  if (severity === 'high') return 3;
-  if (severity === 'medium') return 2;
-  return 1;
-}
-
-function distanceKm(a, b) {
-  const meanLat = ((a.lat + b.lat) / 2) * (Math.PI / 180);
-  const dLat = (a.lat - b.lat) * 111.32;
-  const dLng = (a.lng - b.lng) * 111.32 * Math.cos(meanLat);
-  return Math.sqrt(dLat * dLat + dLng * dLng);
 }
 
 function normalizeLocationKey(locationName) {
@@ -197,21 +185,6 @@ function normalizeLocationKey(locationName) {
     .trim()
     .toLowerCase()
     .replace(/\s+/g, ' ');
-}
-
-function dedupeNewestByVillageAndType(events) {
-  const newestByKey = new Map();
-
-  for (const event of events) {
-    const key = `${normalizeLocationKey(event.locationName)}:${event.type || 'default'}`;
-    const current = newestByKey.get(key);
-
-    if (!current || new Date(event.timestamp).getTime() > new Date(current.timestamp).getTime()) {
-      newestByKey.set(key, event);
-    }
-  }
-
-  return [...newestByKey.values()];
 }
 
 function offsetIncidentsWithSameVillage(incidents) {
@@ -247,74 +220,28 @@ function offsetIncidentsWithSameVillage(incidents) {
 }
 
 function clusterEvents(events, locale, zoomLevel) {
-  const sorted = dedupeNewestByVillageAndType(events).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-  const clusters = [];
-  
-  // Dynamic clustering based on zoom
-  const radiusKm = zoomLevel >= 11 ? 1.5 : zoomLevel >= 9 ? 4 : 8;
-
-  for (const event of sorted) {
-    const existing = clusters.find(
-      (cluster) => cluster.type === event.type && distanceKm(cluster, event) <= radiusKm
-    );
-
-    if (existing) {
-      existing.items.push(event);
-      existing.count += 1;
-      existing.lat = (existing.lat * (existing.count - 1) + event.lat) / existing.count;
-      existing.lng = (existing.lng * (existing.count - 1) + event.lng) / existing.count;
-      existing.timestamp =
-        new Date(event.timestamp) > new Date(existing.timestamp) ? event.timestamp : existing.timestamp;
-      existing.severity =
-        getSeverityScore(event.severity) > getSeverityScore(existing.severity) ? event.severity : existing.severity;
-      existing.locationNames.add(event.locationName);
-      continue;
-    }
-
-    clusters.push({
-      id: `cluster-${event.type}-${event.id}`,
+  const incidents = events
+    .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+    .map((event) => ({
+      id: event.id,
+      kind: 'event',
       type: event.type,
       lat: event.lat,
       lng: event.lng,
       timestamp: event.timestamp,
       severity: event.severity,
+      radiusKm: event.radiusKm ?? event.radius_km,
       count: 1,
       items: [event],
-      locationNames: new Set([event.locationName]),
-    });
-  }
-
-  const incidents = clusters.map((cluster) => {
-    const latestItem = cluster.items[0];
-    const primaryLocation = [...cluster.locationNames][0];
-
-    return {
-      id: cluster.count > 1 ? cluster.id : latestItem.id,
-      kind: cluster.count > 1 ? 'cluster' : 'event',
-      type: cluster.type,
-      lat: cluster.lat,
-      lng: cluster.lng,
-      timestamp: cluster.timestamp,
-      severity: cluster.severity,
-      count: cluster.count,
-      items: cluster.items,
-      primaryLocation: primaryLocation,
-      allLocations: [...cluster.locationNames],
-      locationCount: cluster.locationNames.size,
-      originalEvent: cluster.count === 1 ? latestItem : null,
-      title:
-        cluster.count > 1
-          ? MAP_TRANSLATIONS[locale].clusterSummary(
-              cluster.count,
-              formatEventLabel(cluster.type, locale),
-              primaryLocation
-            )
-          : MAP_TRANSLATIONS[locale].incidentIn(
-              formatEventLabel(latestItem.type, locale),
-              primaryLocation
-        ),
-    };
-  });
+      primaryLocation: event.locationName,
+      allLocations: [event.locationName],
+      locationCount: 1,
+      originalEvent: event,
+      title: MAP_TRANSLATIONS[locale].incidentIn(
+        formatEventLabel(event.type, locale),
+        event.locationName
+      ),
+    }));
 
   return offsetIncidentsWithSameVillage(incidents);
 }
@@ -492,13 +419,12 @@ function getEventMarkerSymbol(type) {
   `;
 }
 
-const eventIcon = (type, color, opacity, count, radius, isFresh, coveragePixelRadius = 18) => {
+const eventIcon = (type, color, opacity, count, radius, isFresh) => {
   const usesLargeOrbit = type === 'drone' || type === 'warplane' || type === 'missile';
-  const orbitSize = usesLargeOrbit ? Math.max(coveragePixelRadius * 2, 30) : Math.max(radius * 2.25, 24);
-  const size = usesLargeOrbit ? orbitSize + Math.max(radius * 2.1, 22) : Math.max(radius * 2.25, 24);
-  const centerSize = Math.max(size * 0.72, 18);
-  const badgeSize = usesLargeOrbit ? Math.max(radius * 2.25, 24) : centerSize;
-  const symbolSize = Math.max(centerSize * 0.72, 14);
+  const coreSize = Math.max(radius * 2.4, 22);
+  const orbitSize = usesLargeOrbit ? Math.max(coreSize * 1.85, 36) : coreSize;
+  const size = usesLargeOrbit ? orbitSize + coreSize * 0.45 : coreSize;
+  const badgeSize = coreSize;
   const symbolClass = type === 'drone' || type === 'warplane' || type === 'missile'
     ? 'event-marker__symbol event-marker__symbol--orbiting'
     : 'event-marker__symbol';
@@ -507,7 +433,7 @@ const eventIcon = (type, color, opacity, count, radius, isFresh, coveragePixelRa
       <div class="event-marker__radius" style="width:${badgeSize * 1.72}px;height:${badgeSize * 1.72}px;"></div>
       ${type === 'airstrike' || type === 'warning' ? '<div class="event-marker__shockwave"></div><div class="event-marker__shockwave event-marker__shockwave--late"></div>' : ''}
       <div class="event-marker__orbit" style="width:${orbitSize}px;height:${orbitSize}px;">
-        <svg class="${symbolClass}" width="${Math.max(badgeSize * 0.72, 14)}" height="${Math.max(badgeSize * 0.72, 14)}" viewBox="0 0 32 32" aria-hidden="true">
+        <svg class="${symbolClass}" width="${Math.max(badgeSize * 0.65, 13)}" height="${Math.max(badgeSize * 0.65, 13)}" viewBox="0 0 32 32" aria-hidden="true">
           ${getEventMarkerSymbol(type)}
         </svg>
       </div>
@@ -529,9 +455,9 @@ const eventIcon = (type, color, opacity, count, radius, isFresh, coveragePixelRa
   });
 };
 
-const customIcon = (type, color, opacity, count, zIndexBase, isFresh, coveragePixelRadius) => {
+const customIcon = (type, color, opacity, count, radius, isFresh) => {
   if (type in TYPE_STYLES) {
-    return eventIcon(type, color, opacity, count, zIndexBase, isFresh, coveragePixelRadius);
+    return eventIcon(type, color, opacity, count, radius, isFresh);
   }
 
   const html = `
@@ -561,28 +487,31 @@ function MapEvents({ events, focusedEvent, locale, onZoomChange }) {
     };
     map.on('zoomend', onZoomEnd);
     return () => map.off('zoomend', onZoomEnd);
-  }, [map, onZoomChange]);
+  }, [map]);
 
   const mapData = useMemo(() => {
     const validEvents = events.filter((e) => e.lat && e.lng && isInLebanon(e.lng, e.lat));
-    return clusterEvents(validEvents, locale, zoomLevel);
-  }, [events, locale, zoomLevel]);
+    return clusterEvents(validEvents, locale);
+  }, [events, locale]);
 
-  // Handle focused event jump
+  // Handle focused event jump — zoom to show full circle area (same as clicking the circle)
   useEffect(() => {
     if (focusedEvent && focusedEvent.lat && focusedEvent.lng && isInLebanon(focusedEvent.lng, focusedEvent.lat)) {
-      map.flyTo([focusedEvent.lat, focusedEvent.lng], FOCUSED_ZOOM, { animate: true, duration: 1.5 });
+      const radiusMeters = getCoverageRadiusMeters(focusedEvent.type, focusedEvent.severity ?? 'medium', 1, focusedEvent.radiusKm ?? focusedEvent.radius_km);
+      zoomToCoverageArea(map, focusedEvent.lat, focusedEvent.lng, radiusMeters);
     }
   }, [focusedEvent, map]);
 
   return (
     <>
       {mapData.map((incident) => {
+        const ageBucket = getAgeBucket(incident.timestamp);
         const style = getMarkerStyle(incident.type, incident.timestamp);
         const radius = getMarkerRadius(incident.severity, incident.count, zoomLevel);
-        const coverageRadiusMeters = getCoverageRadiusMeters(incident.type, incident.severity, incident.count);
-        const coveragePixelRadius = getCoverageRadiusPixels(map, incident.lat, incident.lng, coverageRadiusMeters);
-        const isFresh = getAgeBucket(incident.timestamp) === 'fresh';
+        const coverageRadiusMeters = getCoverageRadiusMeters(incident.type, incident.severity, incident.count, incident.radiusKm);
+        // Use fixed pixel radius — avoids map.latLngToLayerPoint which forces layout reflow
+        const coveragePixelRadius = 32;
+        const isFresh = ageBucket === 'fresh';
 
         return (
           <React.Fragment key={incident.id}>
@@ -592,9 +521,9 @@ function MapEvents({ events, focusedEvent, locale, onZoomChange }) {
               pathOptions={{
                 color: style.base,
                 fillColor: style.base,
-                fillOpacity: Math.min(style.fillOpacity * 0.42, 0.16),
-                opacity: Math.min(style.ringOpacity * 0.72, 0.82),
-                weight: isFresh ? 2 : 1,
+                fillOpacity: isFresh ? 0.08 : ageBucket === 'recent' ? 0.05 : 0.03,
+                opacity: isFresh ? 0.85 : ageBucket === 'recent' ? 0.55 : 0.30,
+                weight: isFresh ? 2 : 1.5,
               }}
               eventHandlers={{
                 click: () => zoomToCoverageArea(map, incident.lat, incident.lng, coverageRadiusMeters),
@@ -612,8 +541,7 @@ function MapEvents({ events, focusedEvent, locale, onZoomChange }) {
                 style.fillOpacity + 0.3,
                 incident.count,
                 radius,
-                isFresh,
-                coveragePixelRadius
+                isFresh
               )}
               eventHandlers={{
                 click: () => zoomToCoverageArea(map, incident.lat, incident.lng, coverageRadiusMeters),
@@ -696,12 +624,13 @@ export default function MapComponent({
           zoomControl={false}
           className="h-full w-full"
           style={{ height: '100%', width: '100%' }}
-          minZoom={7}
-          maxZoom={18}
+          minZoom={MIN_ZOOM}
+          maxZoom={MAX_ZOOM}
           ref={mapRef}
         >
           <MapPanes />
           <TileLayer
+            className="map-base-tiles"
             attribution='&copy; <a href="https://carto.com/">CartoDB</a>'
             maxZoom={18}
             subdomains="abcd"
@@ -714,6 +643,7 @@ export default function MapComponent({
             onZoomChange={setZoom}
           />
           <TileLayer
+            className="map-label-tiles"
             attribution=""
             maxZoom={18}
             pane="labelPane"
@@ -726,7 +656,7 @@ export default function MapComponent({
       {/* Zoom Slider Overlay */}
       <div className="absolute bottom-6 right-3 z-[400] flex flex-col items-center gap-1.5 rounded-full border border-white/10 bg-black/70 p-1.5 shadow-2xl backdrop-blur-xl sm:bottom-8 sm:right-8">
         <button
-          onClick={() => handleZoomChange(Math.min(zoom + 1, 18))}
+          onClick={() => handleZoomChange(Math.min(zoom + 1, MAX_ZOOM))}
           className="flex h-7 w-7 items-center justify-center rounded-full text-slate-300 transition hover:bg-white/10 hover:text-white"
         >
           <Plus className="h-3.5 w-3.5" />
@@ -735,8 +665,8 @@ export default function MapComponent({
         <Slider.Root
           className="relative flex h-20 w-7 cursor-pointer touch-none select-none flex-col items-center sm:h-24"
           value={[zoom]}
-          max={18}
-          min={7}
+          max={MAX_ZOOM}
+          min={MIN_ZOOM}
           step={0.1}
           orientation="vertical"
           onValueChange={([val]) => handleZoomChange(val)}
@@ -751,7 +681,7 @@ export default function MapComponent({
         </Slider.Root>
 
         <button
-          onClick={() => handleZoomChange(Math.max(zoom - 1, 7))}
+          onClick={() => handleZoomChange(Math.max(zoom - 1, MIN_ZOOM))}
           className="flex h-7 w-7 items-center justify-center rounded-full text-slate-300 transition hover:bg-white/10 hover:text-white"
         >
           <Minus className="h-3.5 w-3.5" />
@@ -825,11 +755,11 @@ export default function MapComponent({
       
       {/* Global styles for leaflet popup adjustments */}
       <style>{`
-        .leaflet-dark-wrapper { background: #0a0a0a !important; }
-        .leaflet-container { background: #0a0a0a !important; font-family: 'Inter', sans-serif; }
+        .leaflet-dark-wrapper { background: #3f3f3f !important; }
+        .leaflet-container { background: #3f3f3f !important; font-family: 'Inter', sans-serif; }
+        /* Removed CSS filters from map tiles to fix panning lag */
         .leaflet-popup-content-wrapper { 
-          background: rgba(15, 15, 15, 0.9) !important; 
-          backdrop-filter: blur(12px) !important;
+          background: rgba(12, 12, 12, 0.95) !important; 
           border: 1px solid rgba(255, 255, 255, 0.1) !important;
           border-radius: 12px !important;
           color: white !important;
@@ -853,15 +783,14 @@ export default function MapComponent({
           position: absolute;
           left: 50%;
           top: 50%;
-          border: 1px solid color-mix(in srgb, var(--event-color) 70%, transparent);
+          border: 1.5px solid color-mix(in srgb, var(--event-color) 55%, transparent);
           border-radius: 9999px;
           background:
-            radial-gradient(circle, color-mix(in srgb, var(--event-color) 24%, transparent) 0 36%, transparent 37%),
-            color-mix(in srgb, var(--event-color) 12%, transparent);
-          box-shadow:
-            inset 0 0 14px color-mix(in srgb, var(--event-color) 24%, transparent),
-            0 0 14px color-mix(in srgb, var(--event-color) 38%, transparent);
-          opacity: 0.95;
+            radial-gradient(circle at 50% 50%,
+              color-mix(in srgb, var(--event-color) 28%, transparent) 0%,
+              color-mix(in srgb, var(--event-color) 10%, transparent) 55%,
+              transparent 100%);
+          opacity: 1;
           transform: translate(-50%, -50%);
         }
         .event-marker__radius::after {
@@ -961,7 +890,7 @@ export default function MapComponent({
           fill: color-mix(in srgb, var(--event-color) 30%, rgba(0,0,0,0.96));
         }
         .event-marker--fresh .event-marker__core {
-          animation: eventMarkerCorePulse 1.8s ease-in-out infinite;
+          animation: eventMarkerCorePulse 1.6s ease-in-out infinite;
         }
         @keyframes eventMarkerOrbit {
           to {
@@ -970,10 +899,15 @@ export default function MapComponent({
         }
         @keyframes eventMarkerCorePulse {
           0%, 100% {
-            box-shadow: 0 0 12px color-mix(in srgb, var(--event-color) 48%, transparent);
+            box-shadow:
+              0 0 0 2px rgba(0,0,0,0.55),
+              0 0 14px color-mix(in srgb, var(--event-color) 55%, transparent);
           }
           50% {
-            box-shadow: 0 0 24px color-mix(in srgb, var(--event-color) 78%, transparent);
+            box-shadow:
+              0 0 0 2px rgba(0,0,0,0.55),
+              0 0 28px color-mix(in srgb, var(--event-color) 90%, transparent),
+              0 0 8px rgba(255,255,255,0.15);
           }
         }
         @keyframes airstrikeShockwave {

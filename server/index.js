@@ -99,8 +99,16 @@ async function syncTelegramAlertsToStore() {
 
 async function fetchExternalAlerts() {
   try {
-    const response = await fetch('https://alert-lb.com/api/alerts');
-    if (!response.ok) return [];
+    const response = await fetch('https://alert-lb.com/api/alerts', {
+      headers: {
+        accept: 'application/json',
+        'user-agent': 'Mozilla/5.0 RedAlertsLebanon/1.0',
+      },
+    });
+    if (!response.ok) {
+      console.error(`[external] Alert LB returned ${response.status}`);
+      return [];
+    }
     
     const json = await response.json();
     const externalAlerts = json.alerts || [];
@@ -115,6 +123,14 @@ async function fetchExternalAlerts() {
         timestamp: a.timestamp,
         locationName: a.title?.split('—')?.[1]?.trim() || a.areas?.join('، ') || 'لبنان',
         description: a.description,
+        title: a.title,
+        areas: a.areas,
+        scope: a.scope,
+        region: a.region,
+        district: a.district,
+        governorate: a.governorate,
+        radius_km: a.radius_km,
+        radiusKm: a.radius_km,
         verified: true,
         severity: a.type === 'plane' ? 'high' : 'medium',
         source: 'alert-lb',
@@ -142,7 +158,13 @@ async function refreshAlertsCache() {
   alertsCache.refreshing = true;
 
   try {
-    const syncResult = await syncTelegramAlertsToStore();
+    let syncResult = { alerts: [], inserted: 0 };
+    try {
+      syncResult = await syncTelegramAlertsToStore();
+    } catch (error) {
+      console.warn('[cache] telegram sync failed, using stored alerts:', error.message);
+    }
+
     const externalAlerts = await fetchExternalAlerts();
     
     const windowStart = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
@@ -194,6 +216,16 @@ app.get('/api/alerts', async (_req, res) => {
   } catch (error) {
     console.error('Failed to fetch alerts:', error);
     res.status(500).json({ error: 'Failed to fetch alerts' });
+  }
+});
+
+app.get('/api/alert-lb', async (_req, res) => {
+  try {
+    const alerts = await fetchExternalAlerts();
+    res.json({ alerts, source: 'alert-lb' });
+  } catch (error) {
+    console.error('Failed to fetch Alert LB alerts:', error);
+    res.status(500).json({ error: 'Failed to fetch Alert LB alerts' });
   }
 });
 

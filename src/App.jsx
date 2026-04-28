@@ -1,9 +1,9 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import * as Accordion from '@radix-ui/react-accordion';
 import * as Dialog from '@radix-ui/react-dialog';
 import * as Tooltip from '@radix-ui/react-tooltip';
-import { ChevronDown, ChevronUp, SlidersHorizontal } from 'lucide-react';
+import { ChevronDown, ChevronUp, SlidersHorizontal, Radio, MapPin } from 'lucide-react';
 import {
   Tabs,
   TabsList,
@@ -274,6 +274,67 @@ function playAlertTone() {
   }
 }
 
+function normalizeAlert(alert) {
+  const lat = alert.lat ?? alert.latitude ?? alert.location?.latitude;
+  const lng = alert.lng ?? alert.longitude ?? alert.location?.longitude;
+  const type = alert.type === 'plane' ? 'warplane' : alert.type;
+  const radiusKm =
+    alert.radiusKm ??
+    alert.radius_km ??
+    (alert.scope === 'region' ? 10 : null);
+  const locationName =
+    alert.locationName ??
+    alert.areas?.filter(Boolean).join(', ') ??
+    alert.title ??
+    alert.region ??
+    'Lebanon';
+
+  return {
+    ...alert,
+    type,
+    lat: lat == null ? lat : Number(lat),
+    lng: lng == null ? lng : Number(lng),
+    locationName,
+    severity: alert.severity ?? (type === 'warplane' ? 'high' : type === 'drone' ? 'medium' : 'low'),
+    radiusKm,
+  };
+}
+
+const ALERT_LB_TYPES = new Set(['drone', 'plane', 'warplane']);
+
+function isAlertLbType(event) {
+  return ALERT_LB_TYPES.has(event.type);
+}
+
+async function fetchInternalAlerts() {
+  const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || ''}/api/alerts`);
+  if (!response.ok) {
+    throw new Error(`Internal API returned ${response.status}`);
+  }
+
+  const payload = await response.json();
+  return Array.isArray(payload.alerts) ? payload.alerts.map(normalizeAlert) : [];
+}
+
+async function fetchAlertLbAlerts() {
+  const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || ''}/api/alert-lb`);
+  if (!response.ok) {
+    throw new Error(`Alert LB API returned ${response.status}`);
+  }
+
+  const payload = await response.json();
+  return Array.isArray(payload.alerts)
+    ? payload.alerts
+        .filter(isAlertLbType)
+        .map((alert) => normalizeAlert({
+          ...alert,
+          source: 'alert-lb',
+          sourceLabel: 'Alert LB',
+          verified: true,
+        }))
+    : [];
+}
+
 function useStrikeData() {
   const [events, setEvents] = useState([]);
   const [status, setStatus] = useState('connecting');
@@ -286,17 +347,32 @@ function useStrikeData() {
 
     async function fetchAlerts() {
       try {
-        const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || ''}/api/alerts`);
-        if (!response.ok) {
-          throw new Error(`API returned ${response.status}`);
-        }
-
-        const payload = await response.json();
+        const [internalResult, alertLbResult] = await Promise.allSettled([
+          fetchInternalAlerts(),
+          fetchAlertLbAlerts(),
+        ]);
         if (!active) {
           return;
         }
 
-        const nextEvents = Array.isArray(payload.alerts) ? payload.alerts : [];
+        if (internalResult.status === 'rejected' && alertLbResult.status === 'rejected') {
+          throw new Error(`All alert sources failed: ${internalResult.reason?.message}; ${alertLbResult.reason?.message}`);
+        }
+
+        const internalEvents = internalResult.status === 'fulfilled' ? internalResult.value : [];
+        const alertLbEvents = alertLbResult.status === 'fulfilled' ? alertLbResult.value : [];
+        const internalWithoutAlertLbTypes = alertLbEvents.length > 0
+          ? internalEvents.filter((event) => !isAlertLbType(event))
+          : internalEvents;
+        const nextEvents = [...alertLbEvents, ...internalWithoutAlertLbTypes];
+
+        if (alertLbResult.status === 'rejected') {
+          console.warn('Failed to load Alert LB direct alerts:', alertLbResult.reason);
+        }
+        if (internalResult.status === 'rejected') {
+          console.warn('Failed to load internal alerts:', internalResult.reason);
+        }
+
         const incoming = hasLoadedOnceRef.current
           ? nextEvents.filter((event) => !previousIdsRef.current.has(event.id))
           : [];
@@ -307,6 +383,9 @@ function useStrikeData() {
         previousIdsRef.current = new Set(nextEvents.map((event) => event.id));
         hasLoadedOnceRef.current = true;
 
+        if (incoming.length > 0) {
+          playAlertTone();
+        }
 
         setStatus(nextEvents.length > 0 ? 'live' : 'empty');
       } catch (error) {
@@ -315,8 +394,8 @@ function useStrikeData() {
         }
 
         console.error('Failed to load live alerts:', error);
-        setStatus('error');
         setEvents([]);
+        setStatus('error');
       }
     }
 
@@ -400,19 +479,19 @@ function buildEventSummary(item, locale) {
   if (item.text && !item.locationName) {
     const time = formatAbsoluteTime(item.timestamp, locale);
     const summary = isAr 
-      ? `🔴 خبر عاجل (${item.channel}):\n${item.text}\n⏰ التوقيت: ${time}`
-      : `🔴 Breaking News (${item.channel}):\n${item.text}\n⏰ Time: ${time}`;
-    return `${summary}\n\n📍 لمتابعة التحديثات المباشرة:\nhttps://redalerts-lebanon.online`;
+      ? `Ã°Å¸â€Â´ Ã˜Â®Ã˜Â¨Ã˜Â± Ã˜Â¹Ã˜Â§Ã˜Â¬Ã™â€ž (${item.channel}):\n${item.text}\nÃ¢ÂÂ° Ã˜Â§Ã™â€žÃ˜ÂªÃ™Ë†Ã™â€šÃ™Å Ã˜Âª: ${time}`
+      : `Ã°Å¸â€Â´ Breaking News (${item.channel}):\n${item.text}\nÃ¢ÂÂ° Time: ${time}`;
+    return `${summary}\n\nÃ°Å¸â€œÂ Ã™â€žÃ™â€¦Ã˜ÂªÃ˜Â§Ã˜Â¨Ã˜Â¹Ã˜Â© Ã˜Â§Ã™â€žÃ˜ÂªÃ˜Â­Ã˜Â¯Ã™Å Ã˜Â«Ã˜Â§Ã˜Âª Ã˜Â§Ã™â€žÃ™â€¦Ã˜Â¨Ã˜Â§Ã˜Â´Ã˜Â±Ã˜Â©:\nhttps://redalerts-lebanon.online`;
   }
 
   // If it's a mapped event
   const time = formatAbsoluteTime(item.timestamp, locale);
   const typeLabel = formatEventLabel(item.type, locale);
   const summary = isAr
-    ? `🔴 تحديث ميداني: ${typeLabel} في ${item.locationName}\n⏰ التوقيت: ${time}`
-    : `🔴 Field Update: ${typeLabel} in ${item.locationName}\n⏰ Time: ${time}`;
+    ? `Ã°Å¸â€Â´ Ã˜ÂªÃ˜Â­Ã˜Â¯Ã™Å Ã˜Â« Ã™â€¦Ã™Å Ã˜Â¯Ã˜Â§Ã™â€ Ã™Å : ${typeLabel} Ã™ÂÃ™Å  ${item.locationName}\nÃ¢ÂÂ° Ã˜Â§Ã™â€žÃ˜ÂªÃ™Ë†Ã™â€šÃ™Å Ã˜Âª: ${time}`
+    : `Ã°Å¸â€Â´ Field Update: ${typeLabel} in ${item.locationName}\nÃ¢ÂÂ° Time: ${time}`;
 
-  return `${summary}\n\n📍 لمتابعة التحديثات المباشرة:\nhttps://redalerts-lebanon.online`;
+  return `${summary}\n\nÃ°Å¸â€œÂ Ã™â€žÃ™â€¦Ã˜ÂªÃ˜Â§Ã˜Â¨Ã˜Â¹Ã˜Â© Ã˜Â§Ã™â€žÃ˜ÂªÃ˜Â­Ã˜Â¯Ã™Å Ã˜Â«Ã˜Â§Ã˜Âª Ã˜Â§Ã™â€žÃ™â€¦Ã˜Â¨Ã˜Â§Ã˜Â´Ã˜Â±Ã˜Â©:\nhttps://redalerts-lebanon.online`;
 }
 
 function buildWhatsAppUrl(item, locale) {
@@ -599,7 +678,7 @@ function LivePlayer({ stream, locale, onClose }) {
               className="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs font-medium text-slate-200 transition hover:bg-white/10"
               aria-label={t.closeLive}
             >
-              ✕
+              Ã¢Å“â€¢
             </button>
           </div>
           <div className="relative h-[260px] w-full bg-black sm:h-[420px] lg:h-[620px]">
@@ -655,7 +734,7 @@ function ReportCard({ event, locale, onFocus }) {
               <IconTooltip label={t.viewOnMap}>
                 <button
                   type="button"
-                  onClick={() => onFocus(event)}
+                  onClick={() => handleFocus(event)}
                   aria-label={t.viewOnMap}
                   title={t.viewOnMap}
                   className="grid h-9 w-9 place-items-center rounded-xl border border-red-400/20 bg-red-500/10 text-red-200 transition hover:bg-red-500/20"
@@ -669,7 +748,7 @@ function ReportCard({ event, locale, onFocus }) {
             </div>
           </div>
           <p className="mt-2 text-xs text-slate-500">
-            {event.locationName} · {formatSeverityLabel(event.severity, locale)}
+            {event.locationName} Ã‚Â· {formatSeverityLabel(event.severity, locale)}
           </p>
           <div className="mt-2 flex items-center justify-between gap-3 text-xs text-slate-400">
             <span>{formatRelativeTime(event.timestamp, locale)}</span>
@@ -785,7 +864,7 @@ function TelegramMessageDialog({ locale, message, onOpenChange }) {
                       {t.telegramWire}
                     </Dialog.Title>
                     <Dialog.Description className="mt-1 text-sm text-slate-400">
-                      {message?.channel} · {message ? formatAbsoluteTime(message.timestamp, locale) : ''}
+                      {message?.channel} Ã‚Â· {message ? formatAbsoluteTime(message.timestamp, locale) : ''}
                     </Dialog.Description>
                   </div>
                   <div className="flex items-center gap-3">
@@ -795,7 +874,7 @@ function TelegramMessageDialog({ locale, message, onOpenChange }) {
                         type="button"
                         className="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs font-medium text-slate-200 transition hover:bg-white/10"
                       >
-                        ✕
+                        Ã¢Å“â€¢
                       </button>
                     </Dialog.Close>
                   </div>
@@ -861,7 +940,7 @@ function SidebarPanel({
                 animate={{ rotate: 0 }}
                 className="text-slate-500 transition group-data-[state=open]:rotate-180"
               >
-                ⌄
+                Ã¢Å’â€ž
               </motion.span>
             </Accordion.Trigger>
           </Accordion.Header>
@@ -1026,6 +1105,93 @@ function FilterSheetButton({ locale, activeType, activeWindow, setActiveType, se
 }
 
 
+
+const TYPE_COLORS = {
+  drone: '#f59e0b',
+  warplane: '#38bdf8',
+  airstrike: '#ef4444',
+  carAttack: '#22c55e',
+  artillery: '#fb7185',
+  explosion: '#f43f5e',
+  missile: '#a78bfa',
+  warning: '#ff4d00',
+  default: '#94a3b8',
+};
+
+function LatestEventsButton({ events, locale, onFocus }) {
+  const isAr = locale === 'ar';
+  const [open, setOpen] = useState(false);
+  const latest = events[0];
+  const latestColor = latest ? (TYPE_COLORS[latest.type] ?? TYPE_COLORS.default) : '#ef4444';
+  const top10 = events.slice(0, 10);
+  const handleFocus = (event) => {
+    setOpen(false);
+    onFocus(event);
+  };
+  return (
+    <Sheet open={open} onOpenChange={setOpen}>
+      <SheetTrigger asChild>
+        <button type="button" aria-label={isAr ? 'Ø¢Ø®Ø± Ø§Ù„Ø£Ø­Ø¯Ø§Ø«' : 'Latest events'}
+          className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-black/70 shadow-xl shadow-black/30 backdrop-blur-xl transition hover:bg-black/85">
+          <span className="absolute inset-0 rounded-full animate-ping opacity-35" style={{ backgroundColor: latestColor }} />
+          <span className="relative h-3.5 w-3.5 rounded-full" style={{ backgroundColor: latestColor, boxShadow: `0 0 10px ${latestColor}` }} />
+        </button>
+      </SheetTrigger>
+      <SheetContent side="left" className="w-[min(92vw,22rem)] overflow-hidden border-r border-white/10 bg-black p-0 shadow-2xl">
+        <SheetHeader className="border-b border-white/[0.08] px-5 py-4">
+          <div className="flex items-center gap-3">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: `${latestColor}22`, border: `1px solid ${latestColor}55` }}>
+              <Radio className="h-4 w-4" style={{ color: latestColor }} />
+            </span>
+            <div>
+              <SheetTitle className="text-sm font-semibold text-white">{isAr ? '\u0622\u062e\u0631 \u0627\u0644\u0623\u062d\u062f\u0627\u062b' : 'Latest Events'}</SheetTitle>
+              <SheetDescription className="text-[11px] text-slate-500">{isAr ? `\u0623\u062d\u062f\u062b ${top10.length} \u062d\u062f\u062b` : `${top10.length} most recent alerts`}</SheetDescription>
+            </div>
+          </div>
+        </SheetHeader>
+        <div className="overflow-y-auto pb-20" dir={isAr ? 'rtl' : 'ltr'}>
+          {top10.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 text-slate-500">
+              <Radio className="mb-3 h-8 w-8 opacity-30" />
+              <p className="text-sm">{isAr ? 'Ù„Ø§ ØªÙˆØ¬Ø¯ Ø£Ø­Ø¯Ø§Ø«' : 'No events yet'}</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-white/5">
+              {top10.map((event, idx) => {
+                const color = TYPE_COLORS[event.type] ?? TYPE_COLORS.default;
+                const ageMin = Math.floor((Date.now() - new Date(event.timestamp).getTime()) / 60000);
+                const isFresh = ageMin <= 30;
+                const label = formatEventLabel(event.type, locale);
+                const relTime = formatRelativeTime(event.timestamp, locale);
+                return (
+                  <button key={event.id} type="button" onClick={() => handleFocus(event)}
+                    className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition hover:bg-white/[0.04] active:bg-white/[0.06]">
+                    {/* Bordered icon — consistent fixed column */}
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
+                      style={{ border: `1.5px solid ${color}60`, backgroundColor: `${color}15` }}>
+                      <MapPin className="h-4 w-4" style={{ color }} />
+                    </span>
+                    {/* Text content — consistent right column */}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="truncate text-sm font-medium text-slate-100">{event.locationName}</p>
+                        <span className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
+                          style={{ backgroundColor: `${color}20`, color }}>
+                          {label}
+                        </span>
+                      </div>
+                      <span className="text-[11px] text-slate-500">{relTime}</span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
 const FILTER_TYPES = ['all', 'drone', 'warplane', 'airstrike', 'carAttack', 'artillery', 'explosion', 'missile', 'warning'];
 const FILTER_WINDOWS = ['30m', '1h', '2h', '3h', '6h', '12h', '24h'];
 
@@ -1116,6 +1282,7 @@ function App() {
         >
           {isTopAreaCollapsed ? <ChevronDown className="h-5 w-5" /> : <ChevronUp className="h-5 w-5" />}
         </button>
+        <LatestEventsButton events={events} locale={locale} onFocus={setFocusedEvent} />
         <FilterSheetButton
           locale={locale}
           activeType={activeType}

@@ -72,8 +72,8 @@ async function getTelegramAlerts() {
         processedAlerts.push({
           ...alert,
           source: 'telegram',
-          sourceLabel: message.channel?.toLowerCase().includes('redlinkleb')
-            ? 'Telegram - RedLink'
+          sourceLabel: message.channel?.toLowerCase().includes('bintjbeilnews')
+            ? 'Telegram - Bint Jbeil News'
             : 'Telegram',
         });
       }

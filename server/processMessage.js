@@ -3,19 +3,23 @@ import { buildFingerprint } from './dedupe.js';
 import {
   extractKnownLocationFromText,
   extractKnownLocationsFromText,
+  findKnownLocation,
   resolveCoordinates,
 } from './coordinates.js';
 
 const ARABIC = {
   explosion: '\u062a\u0641\u062c\u064a\u0631',
   blast: '\u0627\u0646\u0641\u062c\u0627\u0631',
+  demolition: '\u0646\u0633\u0641',
   shelling: '\u0642\u0635\u0641',
   raid: '\u063a\u0627\u0631\u0629',
+  raids: '\u063a\u0627\u0631\u062a\u064a\u0646',
   targeting: '\u0627\u0633\u062a\u0647\u062f\u0627\u0641',
   drone: '\u0645\u0633\u064a\u0631\u0629',
   droneMasculine: '\u0645\u0633\u064a\u0631',
   missileFall: '\u0633\u0642\u0648\u0637 \u0635\u0627\u0631\u0648\u062e',
   warplane: '\u0645\u0642\u0627\u062a\u0644\u0627\u062a_\u062d\u0631\u0628\u064a\u0629',
+  warplaneText: '\u0627\u0644\u0637\u064a\u0631\u0627\u0646 \u0627\u0644\u062d\u0631\u0628\u064a',
   car: '\u0633\u064a\u0627\u0631\u0629',
   vehicle: '\u0645\u0631\u0643\u0628\u0629',
   motorcycle: '\u062f\u0631\u0627\u062c\u0629',
@@ -119,6 +123,8 @@ function hasVehicleAttackSignal(text) {
   const normalized = normalizeArabicText(text);
   return (
     includesArabic(text, ARABIC.targeting) ||
+    normalized.includes('\u0627\u063a\u0627\u0631') ||
+    normalized.includes('\u0634\u0646 \u063a\u0627\u0631') ||
     normalized.includes('\u064a\u0633\u062a\u0647\u062f\u0641') ||
     normalized.includes('\u0627\u0633\u062a\u0647\u062f\u0641') ||
     normalized.includes('\u0627\u0633\u062a\u0647\u062f\u0627\u0641') ||
@@ -131,6 +137,7 @@ function hasVehicleAttackSignal(text) {
     normalized.includes('\u0627\u0644\u0639\u062f\u0648 \u064a\u0633\u062a\u0647\u062f\u0641') ||
     includesArabic(text, ARABIC.raid) ||
     includesArabic(text, ARABIC.explosion) ||
+    normalized.includes('targeting') ||
     normalized.includes('targeted') ||
     normalized.includes('targets') ||
     normalized.includes('hit') ||
@@ -192,17 +199,21 @@ function inferType(text) {
   if (vehicleAttack) {
     return 'carAttack';
   }
-  if (includesArabic(text, ARABIC.explosion) || includesArabic(text, ARABIC.blast)) {
+  if (
+    includesArabic(text, ARABIC.explosion) ||
+    includesArabic(text, ARABIC.blast) ||
+    includesArabic(text, ARABIC.demolition) ||
+    normalized.includes('demolition')
+  ) {
     return 'explosion';
   }
   if (includesArabic(text, ARABIC.missileFall) || normalized.includes('missile')) {
     return 'missile';
   }
-  if (includesArabic(text, ARABIC.shelling) || normalized.includes('artillery') || normalized.includes('shell')) {
-    return 'artillery';
-  }
   if (
     includesArabic(text, ARABIC.raid) ||
+    includesArabic(text, ARABIC.raids) ||
+    includesArabic(text, ARABIC.warplaneText) ||
     includesArabic(text, ARABIC.targeting) ||
     normalized.includes('airstrike') ||
     normalized.includes('strike') ||
@@ -210,6 +221,9 @@ function inferType(text) {
     normalized.includes('targeted')
   ) {
     return 'airstrike';
+  }
+  if (includesArabic(text, ARABIC.shelling) || normalized.includes('artillery') || normalized.includes('shell')) {
+    return 'artillery';
   }
 
   return 'update';
@@ -245,10 +259,11 @@ function severityFromText(text) {
   if (
     includesArabic(text, ARABIC.explosion) ||
     includesArabic(text, ARABIC.blast) ||
+    includesArabic(text, ARABIC.demolition) ||
     includesArabic(text, ARABIC.shelling) ||
     hasDroneSignal(text) ||
     includesArabic(text, ARABIC.missileFall) ||
-    normalized.match(/drone|shell|artillery|blast|explosion/i)
+    normalized.match(/drone|shell|artillery|blast|explosion|demolition/i)
   ) {
     return 'medium';
   }
@@ -266,12 +281,15 @@ function isConflictEvent(text) {
     normalized.includes(normalizeArabicText('#\u0645\u0642\u0627\u062a\u0644\u0627\u062a_\u062d\u0631\u0628\u064a\u0629')) ||
     includesArabic(text, ARABIC.explosion) ||
     includesArabic(text, ARABIC.blast) ||
+    includesArabic(text, ARABIC.demolition) ||
     includesArabic(text, ARABIC.shelling) ||
     includesArabic(text, ARABIC.raid) ||
+    includesArabic(text, ARABIC.raids) ||
+    includesArabic(text, ARABIC.warplaneText) ||
     includesArabic(text, ARABIC.targeting) ||
     hasDroneSignal(text) ||
     hasExplicitWarningSignal(text) ||
-    /strike|raid|drone|shell|artillery|missile|blast|explosion|airstrike|targeted|warning/i.test(text)
+    /strike|raid|drone|shell|artillery|missile|blast|explosion|demolition|airstrike|targeted|targeting|warning/i.test(text)
   );
 }
 
@@ -359,36 +377,46 @@ function extractLocation(text) {
   return englishLocationMatch ? englishLocationMatch[0] : 'Lebanon';
 }
 
-function isRedLinkChannel(sourceChannel) {
-  return typeof sourceChannel === 'string' && sourceChannel.toLowerCase().includes('redlinkleb');
+function locationIdentity(location) {
+  const known = findKnownLocation(location);
+  if (known) {
+    return `${known.coords.lat.toFixed(4)},${known.coords.lng.toFixed(4)}`;
+  }
+
+  return normalizeArabicText(location);
 }
 
-function normalizeHashtagValue(value) {
-  return normalizeArabicText(
-    value
-    .replace(/^#+/u, '')
-    .replace(/_/gu, ' ')
-    .trim()
-  );
+function uniqueLocations(locations) {
+  const seen = new Set();
+  const unique = [];
+
+  for (const location of locations) {
+    const cleaned = cleanExtractedLocation(location);
+    if (!cleaned || cleaned === 'Lebanon') {
+      continue;
+    }
+
+    const identity = locationIdentity(cleaned);
+    if (seen.has(identity)) {
+      continue;
+    }
+
+    seen.add(identity);
+    unique.push(cleaned);
+  }
+
+  return unique;
 }
 
-function extractHashtagLocations(text) {
-  const matches = text.match(/#[^\s#]+/gu) ?? [];
-  const blockedTags = new Set([
-    normalizeArabicText('\u0645\u0633\u064a\u0631'),
-    normalizeArabicText('\u0645\u0633\u064a\u0631\u0629'),
-    normalizeArabicText('\u0645\u0642\u0627\u062a\u0644\u0627\u062a \u062d\u0631\u0628\u064a\u0629'),
-    normalizeArabicText('\u0627\u0644\u062c\u0646\u0648\u0628'),
-    normalizeArabicText('\u062d\u0644\u0642'),
-    normalizeArabicText('\u062d\u0644\u0642 \u0648\u062d\u0630\u0631'),
-    normalizeArabicText('\u062d\u064a\u0637\u0629 \u0648\u062d\u0630\u0631'),
-    normalizeArabicText('\u0627\u0644\u062c\u0648\u0627\u0631'),
-  ]);
+function extractTelegramLocations(text) {
+  const locations = uniqueLocations(extractKnownLocationsFromText(text));
 
-  return matches
-    .map(normalizeHashtagValue)
-    .filter((tag) => tag && !blockedTags.has(tag))
-    .filter((tag, index, all) => all.indexOf(tag) === index);
+  if (locations.length > 0) {
+    return locations;
+  }
+
+  const fallbackLocation = extractLocation(text);
+  return uniqueLocations([fallbackLocation]);
 }
 
 async function buildAlertForLocation(text, sourceChannel, location, forcedType) {
@@ -415,39 +443,11 @@ async function buildAlertForLocation(text, sourceChannel, location, forcedType) 
   };
 }
 
-async function buildRedLinkAlerts(text, sourceChannel) {
-  const normalized = normalizeArabicText(text);
-  const forcedType = normalized.includes(normalizeArabicText('#\u0645\u0642\u0627\u062a\u0644\u0627\u062a_\u062d\u0631\u0628\u064a\u0629'))
-    ? 'warplane'
-    : normalized.includes(normalizeArabicText('#\u0645\u0633\u064a\u0631')) || includesArabic(text, ARABIC.drone)
-      ? 'drone'
-      : inferType(text);
-
-  const hashtagLocations = extractHashtagLocations(text);
-  const knownLocations = extractKnownLocationsFromText(text);
-  const locations = [...new Set([...hashtagLocations, ...knownLocations])];
-
-  if (locations.length === 0) {
-    const fallbackLocation = extractLocation(text);
-    if (fallbackLocation && fallbackLocation !== 'Lebanon') {
-      locations.push(fallbackLocation);
-    }
-  }
-
-  const alerts = [];
-  for (const location of locations) {
-    alerts.push(await buildAlertForLocation(text, sourceChannel, location, forcedType));
-  }
-  return alerts;
-}
-
 async function buildTelegramAlert(text, sourceChannel) {
-  const location = extractLocation(text);
   const alerts = [];
+  const locations = extractTelegramLocations(text);
 
-  if (isRedLinkChannel(sourceChannel)) {
-    alerts.push(...(await buildRedLinkAlerts(text, sourceChannel)));
-  } else {
+  for (const location of locations) {
     alerts.push(await buildAlertForLocation(text, sourceChannel, location));
   }
 

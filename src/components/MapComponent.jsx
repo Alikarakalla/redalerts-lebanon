@@ -230,6 +230,13 @@ function normalizeLocationKey(locationName) {
     .replace(/\s+/g, ' ');
 }
 
+function getDistanceMeters(a, b) {
+  const meanLatRad = (((a.lat + b.lat) / 2) * Math.PI) / 180;
+  const latMeters = (a.lat - b.lat) * 111_320;
+  const lngMeters = (a.lng - b.lng) * 111_320 * Math.cos(meanLatRad);
+  return Math.hypot(latMeters, lngMeters);
+}
+
 function offsetIncidentsWithSameVillage(incidents) {
   const grouped = incidents.reduce((groups, incident) => {
     const key = normalizeLocationKey(incident.primaryLocation);
@@ -256,6 +263,57 @@ function offsetIncidentsWithSameVillage(incidents) {
   return incidents;
 }
 
+function offsetNearbyIncidents(incidents) {
+  const remaining = new Set(incidents.map((incident, index) => index));
+  const groups = [];
+  const proximityMeters = 320;
+
+  while (remaining.size > 0) {
+    const [seedIndex] = remaining;
+    remaining.delete(seedIndex);
+    const group = [seedIndex];
+    const queue = [seedIndex];
+
+    while (queue.length > 0) {
+      const currentIndex = queue.shift();
+      const currentIncident = incidents[currentIndex];
+
+      for (const candidateIndex of [...remaining]) {
+        const candidateIncident = incidents[candidateIndex];
+        if (getDistanceMeters(currentIncident, candidateIncident) > proximityMeters) {
+          continue;
+        }
+        remaining.delete(candidateIndex);
+        group.push(candidateIndex);
+        queue.push(candidateIndex);
+      }
+    }
+
+    groups.push(group);
+  }
+
+  for (const group of groups) {
+    if (group.length <= 1) continue;
+
+    const centerLat = group.reduce((sum, index) => sum + incidents[index].lat, 0) / group.length;
+    const centerLng = group.reduce((sum, index) => sum + incidents[index].lng, 0) / group.length;
+    const ringMeters = Math.min(120 + (group.length - 2) * 28, 220);
+
+    group
+      .map((index) => incidents[index])
+      .sort((a, b) => String(a.type).localeCompare(String(b.type)))
+      .forEach((incident, index) => {
+        const angle = -Math.PI / 2 + (index * Math.PI * 2) / group.length;
+        const latOffset = (Math.sin(angle) * ringMeters) / 111_320;
+        const lngOffset = (Math.cos(angle) * ringMeters) / (111_320 * Math.cos((centerLat * Math.PI) / 180));
+        incident.lat = centerLat + latOffset;
+        incident.lng = centerLng + lngOffset;
+      });
+  }
+
+  return incidents;
+}
+
 function clusterEvents(events, locale) {
   const incidents = events
     .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
@@ -279,7 +337,7 @@ function clusterEvents(events, locale) {
         event.locationName
       ),
     }));
-  return offsetIncidentsWithSameVillage(incidents);
+  return offsetNearbyIncidents(offsetIncidentsWithSameVillage(incidents));
 }
 
 function buildEventSummary(incident, locale) {
@@ -414,7 +472,7 @@ const eventIcon = (type, color, opacity, count, radius, isFresh, zoomLevel, cove
     const html = `
       <div class="event-marker event-marker--drone-uav ${isZoomedOut ? 'event-marker--zoomed-out' : ''}" style="--event-color:${color};width:${size}px;height:${size}px;">
         <div class="event-marker__uav-shell">
-          <div class="event-marker__uav">
+          <div class="uav-drone-marker">
             <svg viewBox="0 0 512 512" width="22" height="22" fill="${color}" aria-hidden="true">
               <g>
                 <ellipse cx="256" cy="256" rx="18" ry="140"></ellipse>
@@ -480,15 +538,15 @@ const eventIcon = (type, color, opacity, count, radius, isFresh, zoomLevel, cove
     });
   }
 
-  const size = 64;
+  const size = 36;
   const iconSizeByType = {
     carAttack: 18,
-    explosion: 20,
-    warning: 20,
-    airstrike: 20,
+    explosion: 18,
+    warning: 18,
+    airstrike: 18,
     artillery: 18,
     missile: 18,
-    default: 19,
+    default: 18,
   };
   const iconSize = iconSizeByType[type] ?? iconSizeByType.default;
   const html = `
@@ -568,9 +626,25 @@ function MapEvents({ events, focusedEvent, locale }) {
   const map = useMap();
   const [zoomLevel, setZoomLevel] = useState(map.getZoom());
   useEffect(() => {
-    const onZoomEnd = () => setZoomLevel(map.getZoom());
+    const updateZoomClass = (nextZoom) => {
+      const container = map.getContainer();
+      if (!container) return;
+      container.classList.toggle('zoom-detail', nextZoom >= 11);
+    };
+    const onZoomEnd = () => {
+      const nextZoom = map.getZoom();
+      setZoomLevel(nextZoom);
+      updateZoomClass(nextZoom);
+    };
+    updateZoomClass(map.getZoom());
     map.on('zoomend', onZoomEnd);
-    return () => map.off('zoomend', onZoomEnd);
+    return () => {
+      const container = map.getContainer();
+      if (container) {
+        container.classList.remove('zoom-detail');
+      }
+      map.off('zoomend', onZoomEnd);
+    };
   }, [map]);
   const mapData = useMemo(() => {
     const validEvents = events.filter((e) => e.lat && e.lng && isInLebanon(e.lng, e.lat));
@@ -670,8 +744,9 @@ export default function MapComponent({ events = [], focusedEvent = null, locale 
           position: relative;
           width: 64px;
           height: 64px;
+          pointer-events: auto;
         }
-        .event-marker__uav {
+        .uav-drone-marker {
           width: 22px;
           height: 22px;
           position: absolute;
@@ -682,11 +757,20 @@ export default function MapComponent({ events = [], focusedEvent = null, locale 
           transform: translate(0, 0);
           will-change: transform;
         }
-        .event-marker__uav svg {
+        .uav-drone-marker svg {
           display: block;
           filter: drop-shadow(0 0 5px color-mix(in srgb, var(--event-color, #f59e0b) 66%, transparent));
         }
-        .event-marker--drone-uav:not(.event-marker--zoomed-out) .event-marker__uav {
+        .event-marker--drone-uav.event-marker--zoomed-out .uav-drone-marker {
+          transform: translate(0, 0) scale(1.22);
+          transform-origin: center;
+        }
+        .event-marker--drone-uav.event-marker--zoomed-out .uav-drone-marker svg {
+          filter:
+            drop-shadow(0 0 8px color-mix(in srgb, var(--event-color, #f59e0b) 78%, transparent))
+            drop-shadow(0 0 3px rgba(0, 0, 0, 0.55));
+        }
+        .leaflet-container.zoom-detail .uav-drone-marker {
           animation: droneOrbit 6s linear infinite;
         }
         .event-marker--symbol-badge {
@@ -694,17 +778,22 @@ export default function MapComponent({ events = [], focusedEvent = null, locale 
         }
         .event-marker__symbol-shell {
           position: relative;
-          width: 64px;
-          height: 64px;
+          width: 36px;
+          height: 36px;
           display: grid;
           place-items: center;
         }
         .event-marker__symbol-badge-core {
           position: relative;
-          width: 24px;
-          height: 24px;
+          width: 36px;
+          height: 36px;
           display: grid;
           place-items: center;
+          border-radius: 9999px;
+          background: color-mix(in srgb, var(--event-color, #fff) 10%, rgba(6, 10, 16, 0.92));
+          box-shadow:
+            0 0 0 2px color-mix(in srgb, var(--event-color, #fff) 85%, transparent),
+            0 0 8px color-mix(in srgb, var(--event-color, #fff) 25%, transparent);
         }
         .event-marker__symbol-badge-icon {
           display: block;
@@ -720,7 +809,7 @@ export default function MapComponent({ events = [], focusedEvent = null, locale 
         }
         .event-marker__symbol-pulse {
           position: absolute;
-          inset: 14px;
+          inset: 6px;
           border: 1px solid color-mix(in srgb, var(--event-color, #fff) 52%, transparent);
           border-radius: 9999px;
           animation: symbolPulse 1.8s ease-out infinite;
@@ -761,6 +850,39 @@ export default function MapComponent({ events = [], focusedEvent = null, locale 
         @keyframes droneOrbit { from { transform: rotate(0deg) translateX(20px); } to { transform: rotate(-360deg) translateX(20px); } }
         @keyframes warplaneSquad { 0% { transform: translateY(var(--squad-travel, 40px)); opacity: 0; } 12% { opacity: 1; } 88% { opacity: 1; } 100% { transform: translateY(calc(var(--squad-travel, 40px) * -1)); opacity: 0; } }
         @keyframes symbolPulse { 0% { opacity: 0.85; transform: scale(0.55); } 100% { opacity: 0; transform: scale(1.7); } }
+        @media (max-width: 768px), (pointer: coarse) {
+          .event-marker--drone-uav.event-marker--zoomed-out .uav-drone-marker {
+            transform: translate(0, 0) scale(1.34);
+          }
+          .uav-drone-marker {
+            transform: translate(0, 0) scale(1.18);
+            transform-origin: center;
+          }
+          .uav-drone-marker svg {
+            width: 24px;
+            height: 24px;
+            filter:
+              drop-shadow(0 0 8px color-mix(in srgb, var(--event-color, #f59e0b) 72%, transparent))
+              drop-shadow(0 0 3px rgba(0, 0, 0, 0.55));
+          }
+          .event-marker__symbol-badge-core {
+            width: 36px;
+            height: 36px;
+            box-shadow:
+              0 0 0 1.25px color-mix(in srgb, var(--event-color, #fff) 64%, transparent),
+              0 0 16px color-mix(in srgb, var(--event-color, #fff) 34%, transparent);
+          }
+          .event-marker__symbol-badge-icon {
+            width: 18px !important;
+            height: 18px !important;
+            filter:
+              drop-shadow(0 0 8px color-mix(in srgb, var(--event-color, #fff) 72%, transparent))
+              drop-shadow(0 0 3px rgba(0, 0, 0, 0.55));
+          }
+          .event-marker__symbol-count {
+            font-size: 12px;
+          }
+        }
       `}</style>
     </div>
   );

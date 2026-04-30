@@ -4,7 +4,7 @@ import * as Accordion from '@radix-ui/react-accordion';
 import * as Dialog from '@radix-ui/react-dialog';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import * as Slider from '@radix-ui/react-slider';
-import { ChevronDown, ChevronUp, SlidersHorizontal, Radio, MapPin, Pause, Play, RotateCcw, Minus, Plus, Info, Send } from 'lucide-react';
+import { ChevronDown, ChevronUp, SlidersHorizontal, Radio, MapPin, Pause, Play, RotateCcw, Minus, Plus, Info, Send, X } from 'lucide-react';
 import {
   Tabs,
   TabsList,
@@ -67,8 +67,8 @@ const TIMELINE_LEGEND_COLORS = {
 const LIVE_STREAMS = {
   mayadeen: {
     id: 'mayadeen',
-    youtubeId: 'R9E3xvbZWjw',
-    watchUrl: 'https://www.youtube.com/watch?v=R9E3xvbZWjw',
+    youtubeId: 'Ca0fSZ2E-ZQ',
+    watchUrl: 'https://www.youtube.com/watch?v=Ca0fSZ2E-ZQ',
     logo: 'https://upload.wikimedia.org/wikipedia/en/thumb/3/33/Al_Mayadeen_logo.svg/250px-Al_Mayadeen_logo.svg.png',
     label: 'Al Mayadeen',
     labelAr: '\u0627\u0644\u0645\u064a\u0627\u062f\u064a\u0646',
@@ -443,15 +443,43 @@ async function fetchInternalAlerts() {
   return Array.isArray(payload.alerts) ? payload.alerts.map(normalizeAlert) : [];
 }
 
+function sortAlertsByTime(alerts) {
+  return [...alerts].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+}
+
 function useStrikeData() {
   const [events, setEvents] = useState([]);
   const [status, setStatus] = useState('connecting');
 
   const hasLoadedOnceRef = useRef(false);
   const previousIdsRef = useRef(new Set());
+  const eventsRef = useRef([]);
 
   useEffect(() => {
     let active = true;
+    let eventSource = null;
+
+    function mergeWithLocalTestData(nextEvents) {
+      const localTestEvents = shouldIncludeLocalMapTestData() ? getLocalMapTestAlerts() : [];
+      return filterExpiredAlerts([...nextEvents, ...localTestEvents]).filter(isActiveEventType);
+    }
+
+    function commitEvents(nextEvents, { allowTone = true } = {}) {
+      const incoming = hasLoadedOnceRef.current
+        ? nextEvents.filter((event) => !previousIdsRef.current.has(event.id))
+        : [];
+
+      const sortedEvents = sortAlertsByTime(nextEvents);
+      eventsRef.current = sortedEvents;
+      setEvents(sortedEvents);
+      previousIdsRef.current = new Set(sortedEvents.map((event) => event.id));
+      hasLoadedOnceRef.current = true;
+      setStatus(sortedEvents.length > 0 ? 'live' : 'empty');
+
+      if (allowTone && incoming.length > 0) {
+        playAlertTone();
+      }
+    }
 
     async function fetchAlerts() {
       try {
@@ -460,45 +488,92 @@ function useStrikeData() {
           return;
         }
 
-        const localTestEvents = shouldIncludeLocalMapTestData() ? getLocalMapTestAlerts() : [];
-        const nextEvents = filterExpiredAlerts(
-          [...internalEvents, ...localTestEvents]
-        ).filter(isActiveEventType);
-
-        const incoming = hasLoadedOnceRef.current
-          ? nextEvents.filter((event) => !previousIdsRef.current.has(event.id))
-          : [];
-
-        // Always set events (so test data shows up even if fetch fails)
-        setEvents(
-          nextEvents.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-        );
-        previousIdsRef.current = new Set(nextEvents.map((event) => event.id));
-        hasLoadedOnceRef.current = true;
-        setStatus(nextEvents.length > 0 ? 'live' : 'empty');
-
-        if (incoming.length > 0) {
-          playAlertTone();
-        }
-
-        setStatus(nextEvents.length > 0 ? 'live' : 'empty');
+        commitEvents(mergeWithLocalTestData(internalEvents));
       } catch (error) {
         if (!active) {
           return;
         }
 
         console.error('Failed to load live alerts:', error);
-        setEvents([]);
-        setStatus('error');
+        setStatus(hasLoadedOnceRef.current ? 'live' : 'error');
       }
     }
 
+    function connectStream() {
+      const baseUrl = import.meta.env.VITE_API_BASE_URL || '';
+      const streamUrl = `${baseUrl}/api/alerts/stream`;
+      eventSource = new EventSource(streamUrl);
+
+      eventSource.addEventListener('READY', (event) => {
+        if (!active) {
+          return;
+        }
+
+        try {
+          const payload = JSON.parse(event.data);
+          const nextEvents = Array.isArray(payload.alerts) ? payload.alerts.map(normalizeAlert) : [];
+          commitEvents(mergeWithLocalTestData(nextEvents), { allowTone: false });
+        } catch (error) {
+          console.error('Failed to parse alerts stream READY payload:', error);
+        }
+      });
+
+      const handleUpsert = (event) => {
+        if (!active) {
+          return;
+        }
+
+        try {
+          const payload = JSON.parse(event.data);
+          const normalizedAlert = normalizeAlert(payload.alert);
+          const byId = new Map(eventsRef.current.map((item) => [item.id, item]));
+          byId.set(normalizedAlert.id, normalizedAlert);
+          commitEvents(mergeWithLocalTestData([...byId.values()]));
+        } catch (error) {
+          console.error('Failed to parse alerts stream upsert payload:', error);
+        }
+      };
+
+      eventSource.addEventListener('INSERT', handleUpsert);
+      eventSource.addEventListener('UPDATE', handleUpsert);
+
+      eventSource.addEventListener('DELETE', (event) => {
+        if (!active) {
+          return;
+        }
+
+        try {
+          const payload = JSON.parse(event.data);
+          const nextEvents = mergeWithLocalTestData(
+            eventsRef.current.filter((item) => item.id !== payload.id)
+          );
+          commitEvents(nextEvents, { allowTone: false });
+        } catch (error) {
+          console.error('Failed to parse alerts stream delete payload:', error);
+        }
+      });
+
+      eventSource.addEventListener('ERROR', (event) => {
+        console.warn('Alerts stream reported an upstream error.', event.data);
+      });
+
+      eventSource.onerror = () => {
+        if (!active) {
+          return;
+        }
+
+        console.warn('Alerts stream disconnected. Falling back to polling until reconnect.');
+      };
+    }
+
     fetchAlerts();
-    const interval = setInterval(fetchAlerts, 15000);
+    connectStream();
+    const interval = setInterval(fetchAlerts, 60000);
 
     return () => {
       active = false;
       clearInterval(interval);
+      eventSource?.close();
     };
   }, []);
 
@@ -732,6 +807,67 @@ function LiveChannelButton({ stream, locale, active, onClick }) {
   );
 }
 
+function LiveChannelsSheetButton({ locale, activeStreamId, setActiveStreamId }) {
+  const [open, setOpen] = useState(false);
+  const isAr = locale === 'ar';
+  const label = isAr ? 'بث مباشر' : 'Live';
+
+  return (
+    <Sheet open={open} onOpenChange={setOpen}>
+      <SheetTrigger asChild>
+        <button
+          type="button"
+          aria-label={label}
+          className="flex h-10 shrink-0 items-center gap-2 rounded-full border border-white/10 bg-black/70 px-3 text-xs font-medium text-slate-200 shadow-xl shadow-black/30 backdrop-blur-xl transition hover:bg-black/85 hover:text-white"
+        >
+          <Play className="h-4 w-4 fill-current" />
+          <span>{label}</span>
+        </button>
+      </SheetTrigger>
+      <SheetContent side={locale === 'ar' ? 'left' : 'right'} className="w-[min(92vw,22rem)] overflow-hidden border-white/10 bg-black p-0 shadow-2xl">
+        <SheetHeader className="border-b border-white/[0.08] px-5 py-4">
+          <SheetTitle className="text-sm font-semibold text-white">
+            {isAr ? 'القنوات المباشرة' : 'Live Channels'}
+          </SheetTitle>
+          <SheetDescription className="text-[11px] text-slate-500">
+            {isAr ? 'اختر القناة التي تريد مشاهدتها' : 'Choose a channel to watch'}
+          </SheetDescription>
+        </SheetHeader>
+        <div className="flex flex-col gap-2 p-4" dir={isAr ? 'rtl' : 'ltr'}>
+          {Object.values(LIVE_STREAMS).map((stream) => (
+            <button
+              key={stream.id}
+              type="button"
+              onClick={() => {
+                setActiveStreamId((current) => (current === stream.id ? null : stream.id));
+                setOpen(false);
+              }}
+              className={`flex w-full items-center gap-3 rounded-2xl border px-3 py-3 text-start transition ${
+                activeStreamId === stream.id
+                  ? 'border-white/20 bg-white/10 text-white'
+                  : 'border-white/10 bg-white/[0.04] text-slate-200 hover:bg-white/[0.08]'
+              }`}
+            >
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-white/5 p-1.5">
+                <img src={stream.logo} alt={stream.label} className="h-full w-full object-contain" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm font-semibold">
+                  {locale === 'ar' ? stream.labelAr : stream.label}
+                </div>
+                <div className="text-[11px] text-slate-500">
+                  {isAr ? 'فتح البث' : 'Open stream'}
+                </div>
+              </div>
+              <Play className="h-4 w-4 shrink-0" />
+            </button>
+          ))}
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
 function LivePlayer({ stream, locale, onClose }) {
   const t = TRANSLATIONS[locale];
   const title = locale === 'ar' ? stream.labelAr : stream.label;
@@ -769,10 +905,10 @@ function LivePlayer({ stream, locale, onClose }) {
             <button
               type="button"
               onClick={onClose}
-              className="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs font-medium text-slate-200 transition hover:bg-white/10"
+              className="grid h-9 w-9 place-items-center rounded-full border border-white/10 bg-white/5 text-slate-200 transition hover:bg-white/10"
               aria-label={t.closeLive}
             >
-              Ã¢Å“â€¢
+              <X className="h-4 w-4" />
             </button>
           </div>
           <div className="relative h-[260px] w-full bg-black sm:h-[420px] lg:h-[620px]">
@@ -1126,7 +1262,7 @@ function FilterSheetButton({ locale, activeType, activeWindow, setActiveType, se
           className="flex h-10 shrink-0 items-center gap-2 rounded-full border border-white/10 bg-black/70 px-3 text-xs font-medium text-slate-200 shadow-xl shadow-black/30 backdrop-blur-xl transition hover:bg-black/85 hover:text-white"
         >
           <SlidersHorizontal className="h-4 w-4" />
-          <span className="hidden sm:inline">{locale === 'ar' ? '\u0627\u0644\u0641\u0644\u0627\u062a\u0631' : 'Filters'}</span>
+          <span>{locale === 'ar' ? '\u0627\u0644\u0641\u0644\u0627\u062a\u0631' : 'Filters'}</span>
         </button>
       </SheetTrigger>
       <SheetContent side={locale === 'ar' ? 'left' : 'right'} className="w-[min(92vw,24rem)]">
@@ -1218,6 +1354,7 @@ function LatestEventsButton({ events, locale, onFocus }) {
   const latest = events[0];
   const latestColor = latest ? (TYPE_COLORS[latest.type] ?? TYPE_COLORS.default) : '#ef4444';
   const top10 = events.slice(0, 10);
+  const latestCount = Math.min(events.length, 99);
   const handleFocus = (event) => {
     setOpen(false);
     onFocus(event);
@@ -1226,9 +1363,17 @@ function LatestEventsButton({ events, locale, onFocus }) {
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
         <button type="button" aria-label={isAr ? 'Ø¢Ø®Ø± Ø§Ù„Ø£Ø­Ø¯Ø§Ø«' : 'Latest events'}
-          className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-black/70 shadow-xl shadow-black/30 backdrop-blur-xl transition hover:bg-black/85">
+          className="relative flex h-10 shrink-0 items-center gap-2 rounded-full border border-red-500/15 bg-black/70 px-3 shadow-xl shadow-black/30 backdrop-blur-xl transition hover:bg-black/85">
           <span className="absolute inset-0 rounded-full animate-ping opacity-35" style={{ backgroundColor: latestColor }} />
           <span className="relative h-3.5 w-3.5 rounded-full" style={{ backgroundColor: latestColor, boxShadow: `0 0 10px ${latestColor}` }} />
+          <span className="relative text-xs font-medium text-slate-100">
+            {isAr ? 'آخر الأحداث' : 'Latest'}
+          </span>
+          {latestCount > 0 ? (
+            <span className="relative inline-flex min-w-5 items-center justify-center rounded-full border border-red-400/20 bg-red-500/12 px-1.5 py-0.5 text-[10px] font-semibold text-red-200">
+              {latestCount}
+            </span>
+          ) : null}
         </button>
       </SheetTrigger>
       <SheetContent side="left" className="w-[min(92vw,22rem)] overflow-hidden border-r border-white/10 bg-black p-0 shadow-2xl">
@@ -1298,10 +1443,10 @@ function TelegramChannelButton({ locale }) {
         target="_blank"
         rel="noreferrer"
         aria-label={label}
-        className="flex h-10 shrink-0 items-center gap-2 rounded-full border border-white/10 bg-black/70 px-3 text-xs font-medium text-sky-200 shadow-xl shadow-black/30 backdrop-blur-xl transition hover:bg-black/85 hover:text-white"
+        className="flex h-10 shrink-0 items-center gap-2 rounded-full border border-sky-400/20 bg-black/70 px-3 text-xs font-medium text-sky-200 shadow-xl shadow-black/30 backdrop-blur-xl transition hover:bg-black/85 hover:text-white"
       >
         <Send className="h-4 w-4" />
-        <span className="hidden sm:inline">{label}</span>
+        <span>{label}</span>
       </a>
     </IconTooltip>
   );
@@ -1396,15 +1541,15 @@ function TimelinePlayback({
 
   if (compact) {
     return (
-      <div className="pointer-events-none fixed inset-x-0 bottom-4 z-[1400] flex justify-center px-3 sm:bottom-6 lg:justify-start lg:pl-6">
+      <div className="pointer-events-none fixed inset-x-0 bottom-4 z-[1400] flex justify-end px-3 sm:bottom-6 lg:justify-start lg:pl-6">
         <div className={`pointer-events-auto rounded-full border p-1.5 shadow-2xl backdrop-blur-xl ${panelClass}`}>
           <button
             type="button"
             onClick={() => setCompact(false)}
             aria-label="Show timeline"
-            className={`grid h-10 w-10 place-items-center rounded-full transition ${ghostButtonClass}`}
+            className={`grid h-8 w-8 place-items-center rounded-full transition sm:h-10 sm:w-10 ${ghostButtonClass}`}
           >
-            <ChevronUp className="h-5 w-5" />
+            <ChevronUp className="h-4 w-4 sm:h-5 sm:w-5" />
           </button>
         </div>
       </div>
@@ -1619,7 +1764,7 @@ function App() {
   const [focusedEvent, setFocusedEvent] = useState(null);
   const [activeType, setActiveType] = useState('all');
   const [activeWindow, setActiveWindow] = useState('2h');
-  const [isTopAreaCollapsed, setIsTopAreaCollapsed] = useState(true);
+  const [isTopAreaCollapsed] = useState(true);
   const [timelineEnabled, setTimelineEnabled] = useState(false);
   const [timelinePlaying, setTimelinePlaying] = useState(false);
   const [timelineRangeHours, setTimelineRangeHours] = useState(24);
@@ -1710,15 +1855,8 @@ function App() {
     <div ref={shellRef} className="workspace-shell min-h-screen text-slate-100" dir={t.dir}>
 
       <div className="fixed left-3 top-3 z-[1200] flex max-w-[calc(100vw-1.5rem)] items-center gap-2">
-        <button
-          type="button"
-          onClick={() => setIsTopAreaCollapsed((current) => !current)}
-          aria-label={isTopAreaCollapsed ? 'Show top area' : 'Hide top area'}
-          className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-black/70 text-slate-100 shadow-xl shadow-black/30 backdrop-blur-xl transition hover:bg-black/85 hover:text-white"
-        >
-          {isTopAreaCollapsed ? <ChevronDown className="h-5 w-5" /> : <ChevronUp className="h-5 w-5" />}
-        </button>
         <LatestEventsButton events={events} locale={locale} onFocus={setFocusedEvent} />
+        <LiveChannelsSheetButton locale={locale} activeStreamId={activeStreamId} setActiveStreamId={setActiveStreamId} />
         {TELEGRAM_UI_ENABLED ? <TelegramChannelButton locale={locale} /> : null}
         <FilterSheetButton
           locale={locale}
@@ -1986,7 +2124,7 @@ function App() {
         </main>
       </div>
 
-      {activeStream && status !== 'error' && (
+      {activeStream && (
         <LivePlayer
           stream={activeStream}
           locale={locale}

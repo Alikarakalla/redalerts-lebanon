@@ -548,6 +548,32 @@ function MapPanes() {
   return null;
 }
 
+function InitialLebanonView({ enabled, focusedEvent }) {
+  const map = useMap();
+  const hasInitializedRef = React.useRef(false);
+
+  useEffect(() => {
+    if (!enabled || focusedEvent || hasInitializedRef.current) {
+      return;
+    }
+
+    const frameId = requestAnimationFrame(() => {
+      const width = window.innerWidth || map.getSize().x || 0;
+      const isMobile = width <= 768;
+      map.fitBounds(LEBANON_VIEW_BOUNDS, {
+        animate: false,
+        paddingTopLeft: isMobile ? [10, 14] : [28, 28],
+        paddingBottomRight: isMobile ? [10, 54] : [28, 28],
+      });
+      hasInitializedRef.current = true;
+    });
+
+    return () => cancelAnimationFrame(frameId);
+  }, [enabled, focusedEvent, map]);
+
+  return null;
+}
+
 class PlaceLabelsLayer extends L.Layer {
   constructor(features, locale, isDarkMode) {
     super();
@@ -852,11 +878,10 @@ export default function MapComponent({ events = [], focusedEvent = null, locale 
           className={`h-full w-full ${isLebanonOnlyMode ? 'lebanon-only-map' : ''}`}
           minZoom={MIN_ZOOM}
           maxZoom={MAX_ZOOM}
-          maxBounds={isLebanonOnlyMode ? LEBANON_VIEW_BOUNDS : undefined}
-          maxBoundsViscosity={isLebanonOnlyMode ? 0.95 : undefined}
           ref={mapRef}
         >
           <MapPanes />
+          <InitialLebanonView enabled={isLebanonOnlyMode} focusedEvent={focusedEvent} />
           {isLebanonOnlyMode ? null : (
             <TileLayer key={`base-${isDarkMode ? 'dark' : 'light'}`} attribution='&copy; CartoDB' url={baseTileUrl} subdomains={['a', 'b', 'c', 'd']} />
           )}

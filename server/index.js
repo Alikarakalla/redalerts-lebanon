@@ -318,6 +318,91 @@ const CACHE_TTL_MS = 90_000;
 let alertsCache = { data: null, fetchedAt: 0, refreshing: false };
 let externalAlertsCache = { data: [], fetchedAt: 0 };
 const WARPLANE_TTL_MS = 20 * 60 * 1000;
+const STREAM_POLL_INTERVAL_MS = 5_000;
+const streamClients = new Set();
+let streamPollTimer = null;
+let streamSnapshot = new Map();
+
+function serializeStreamPayload(payload) {
+  return `data: ${JSON.stringify(payload)}\n\n`;
+}
+
+function writeSseEvent(res, event, payload) {
+  res.write(`event: ${event}\n${serializeStreamPayload(payload)}`);
+}
+
+function getAlertsSnapshotMap(alerts) {
+  return new Map(
+    filterActiveAlerts(filterExpiredWarplanes(alerts || [])).map((alert) => [alert.id, alert])
+  );
+}
+
+function alertsDiffer(left, right) {
+  return JSON.stringify(left) !== JSON.stringify(right);
+}
+
+function broadcastStreamEvent(event, payload) {
+  for (const client of streamClients) {
+    try {
+      writeSseEvent(client, event, payload);
+    } catch (error) {
+      console.warn('[stream] failed to write to client:', error.message);
+    }
+  }
+}
+
+function applyStreamDiff(nextAlerts) {
+  const nextSnapshot = getAlertsSnapshotMap(nextAlerts);
+
+  for (const [id, alert] of nextSnapshot) {
+    if (!streamSnapshot.has(id)) {
+      broadcastStreamEvent('INSERT', { alert });
+      continue;
+    }
+
+    const previous = streamSnapshot.get(id);
+    if (alertsDiffer(previous, alert)) {
+      broadcastStreamEvent('UPDATE', { alert });
+    }
+  }
+
+  for (const [id] of streamSnapshot) {
+    if (!nextSnapshot.has(id)) {
+      broadcastStreamEvent('DELETE', { id });
+    }
+  }
+
+  streamSnapshot = nextSnapshot;
+}
+
+async function pollStreamSnapshot() {
+  try {
+    await refreshAlertsCache();
+    applyStreamDiff(alertsCache.data || []);
+  } catch (error) {
+    console.error('[stream] poll failed:', error.message);
+    broadcastStreamEvent('ERROR', { message: error.message });
+  }
+}
+
+function ensureStreamPolling() {
+  if (streamPollTimer || streamClients.size === 0) {
+    return;
+  }
+
+  streamPollTimer = setInterval(() => {
+    pollStreamSnapshot();
+  }, STREAM_POLL_INTERVAL_MS);
+}
+
+function stopStreamPollingIfIdle() {
+  if (streamClients.size > 0 || !streamPollTimer) {
+    return;
+  }
+
+  clearInterval(streamPollTimer);
+  streamPollTimer = null;
+}
 
 function isExpiredWarplaneAlert(alert, now = Date.now()) {
   if (alert?.type !== 'warplane') {
@@ -428,6 +513,53 @@ app.get('/api/alerts', async (_req, res) => {
     console.error('Failed to fetch alerts:', error);
     res.status(500).json({ error: 'Failed to fetch alerts' });
   }
+});
+
+app.get('/api/alerts/stream', async (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders?.();
+
+  res.write(': connected\n\n');
+  streamClients.add(res);
+
+  try {
+    if (!alertsCache.data) {
+      await refreshAlertsCache();
+    }
+
+    const initialAlerts = filterActiveAlerts(filterExpiredWarplanes(alertsCache.data || []));
+    if (streamSnapshot.size === 0) {
+      streamSnapshot = getAlertsSnapshotMap(initialAlerts);
+    }
+
+    writeSseEvent(res, 'READY', {
+      alerts: initialAlerts,
+      storage: getStorageMode(),
+      at: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error('[stream] initial sync failed:', error.message);
+    writeSseEvent(res, 'ERROR', { message: error.message });
+  }
+
+  ensureStreamPolling();
+
+  const heartbeat = setInterval(() => {
+    try {
+      res.write(': heartbeat\n\n');
+    } catch {
+      clearInterval(heartbeat);
+    }
+  }, 20_000);
+
+  req.on('close', () => {
+    clearInterval(heartbeat);
+    streamClients.delete(res);
+    stopStreamPollingIfIdle();
+  });
 });
 
 app.get('/api/alert-lb', async (_req, res) => {

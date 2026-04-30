@@ -11,6 +11,7 @@ import {
 import { isLikelyDuplicate } from './dedupe.js';
 import { getChannelMessagesSince, getLatestChannelMessages, startTelegramListener } from './telegramListener.js';
 import { trackVisitor, getStats } from './analytics.js';
+import { resolveCoordinates } from './coordinates.js';
 
 const app = express();
 app.set('trust proxy', true);
@@ -20,6 +21,11 @@ app.use(express.json());
 
 const ACTIVE_ALERT_TYPES = new Set(['drone', 'warplane']);
 const TELEGRAM_CHANNELS_ENABLED = false;
+const NON_LOCATION_AREA_LABELS = new Set([
+  '\u062a\u0631\u0643\u064a\u0632 \u0645\u0633\u064a\u0631',
+  '\u0623\u0642\u0635\u0649 \u062f\u0631\u062c\u0627\u062a \u0627\u0644\u062d\u0630\u0631',
+  '\u0645\u0642\u0627\u062a\u0644\u0627\u062a \u062d\u0631\u0628\u064a\u0629',
+]);
 
 function isActiveAlertType(alert) {
   return ACTIVE_ALERT_TYPES.has(alert?.type);
@@ -27,6 +33,97 @@ function isActiveAlertType(alert) {
 
 function filterActiveAlerts(alerts) {
   return alerts.filter(isActiveAlertType);
+}
+
+function normalizeExternalType(type) {
+  return type === 'plane' ? 'warplane' : type;
+}
+
+function getExternalLocationName(alert) {
+  const titleLocation = typeof alert.title === 'string'
+    ? alert.title.split(/[—-]/u).slice(1).join('—').trim()
+    : '';
+
+  return titleLocation || alert.areas?.filter(Boolean).join(', ') || 'Lebanon';
+}
+
+function buildExternalAlert(alert) {
+  const type = normalizeExternalType(alert.type);
+
+  return {
+    id: alert.id,
+    type,
+    lat: alert.location?.latitude,
+    lng: alert.location?.longitude,
+    timestamp: alert.timestamp,
+    locationName: getExternalLocationName(alert),
+    description: alert.description,
+    title: alert.title,
+    areas: alert.areas,
+    scope: alert.scope,
+    region: alert.region,
+    district: alert.district,
+    governorate: alert.governorate,
+    radius_km: alert.radius_km,
+    radiusKm: alert.radius_km,
+    verified: true,
+    severity: type === 'warplane' ? 'high' : 'medium',
+    source: 'alert-lb',
+    sourceLabel: 'Alert LB',
+    resolvedLocation: true,
+    locationSource: 'alert-lb',
+    reliabilityScore: 1,
+    alertLevel: type === 'warplane' ? 'red' : 'orange',
+  };
+}
+
+function isValidCoordinatePair(lat, lng) {
+  return Number.isFinite(Number(lat)) && Number.isFinite(Number(lng));
+}
+
+async function resolveExternalArea(area) {
+  const label = String(area || '').replace(/\s+/gu, ' ').trim();
+  if (!label || NON_LOCATION_AREA_LABELS.has(label)) {
+    return null;
+  }
+
+  const coords = await resolveCoordinates(label);
+  if (!coords?.resolved || !isValidCoordinatePair(coords.lat, coords.lng)) {
+    return null;
+  }
+
+  return { label, coords };
+}
+
+async function expandExternalAlertAreas(alert) {
+  const baseAlert = buildExternalAlert(alert);
+  const areas = Array.isArray(alert.areas) ? alert.areas : [];
+
+  if (alert.scope !== 'multi_village' || areas.length <= 1) {
+    return [baseAlert];
+  }
+
+  const resolvedAreas = (await Promise.all(areas.map(resolveExternalArea))).filter(Boolean);
+  if (resolvedAreas.length === 0) {
+    return [baseAlert];
+  }
+
+  return resolvedAreas.map(({ label, coords }, index) => ({
+    ...baseAlert,
+    id: `${baseAlert.id}:area:${index}:${label}`,
+    lat: coords.lat,
+    lng: coords.lng,
+    locationName: label,
+    areaName: label,
+    areas: [label],
+    scope: 'village',
+    originalScope: baseAlert.scope,
+    parentAlertId: baseAlert.id,
+    parentLocationName: baseAlert.locationName,
+    radius_km: null,
+    radiusKm: null,
+    locationSource: coords.source || 'area-resolver',
+  }));
 }
 
 app.get('/api/health', async (_req, res) => {
@@ -135,34 +232,15 @@ async function fetchExternalAlerts() {
     const json = await response.json();
     const externalAlerts = json.alerts || [];
 
-    return externalAlerts
-      .filter((a) => a.type === 'drone' || a.type === 'plane')
-      .map((a) => ({
-        id: a.id,
-        type: a.type === 'plane' ? 'warplane' : a.type,
-        lat: a.location?.latitude,
-        lng: a.location?.longitude,
-        timestamp: a.timestamp,
-        locationName: a.title?.split('—')?.[1]?.trim() || a.areas?.join('، ') || 'لبنان',
-        description: a.description,
-        title: a.title,
-        areas: a.areas,
-        scope: a.scope,
-        region: a.region,
-        district: a.district,
-        governorate: a.governorate,
-        radius_km: a.radius_km,
-        radiusKm: a.radius_km,
-        verified: true,
-        severity: a.type === 'plane' ? 'high' : 'medium',
-        source: 'alert-lb',
-        sourceLabel: 'Alert LB',
-        resolvedLocation: true,
-        locationSource: 'alert-lb',
-        reliabilityScore: 1,
-        alertLevel: a.type === 'plane' ? 'red' : 'orange',
-      }))
-      .filter((a) => a.lat && a.lng);
+    const expandedAlerts = await Promise.all(
+      externalAlerts
+        .filter((a) => a.type === 'drone' || a.type === 'plane')
+        .map(expandExternalAlertAreas)
+    );
+
+    return expandedAlerts
+      .flat()
+      .filter((a) => isValidCoordinatePair(a.lat, a.lng));
   } catch (error) {
     console.error('[external] fetch failed:', error.message);
     return [];

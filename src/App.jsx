@@ -444,10 +444,8 @@ async function fetchInternalAlerts() {
 }
 
 async function fetchAlertLbAlerts() {
-  // Use Cloudflare Worker URL if set (bypasses Vercel IP block),
-  // otherwise fall back to the Node.js backend /api/alert-lb.
-  const workerUrl = import.meta.env.VITE_ALERT_LB_WORKER_URL;
-  const url = workerUrl || `${import.meta.env.VITE_API_BASE_URL || ''}/api/alert-lb`;
+  // The backend expands multi-village Alert LB alerts into village-level map circles.
+  const url = `${import.meta.env.VITE_API_BASE_URL || ''}/api/alert-lb`;
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error(`Alert LB API returned ${response.status}`);

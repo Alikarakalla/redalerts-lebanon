@@ -443,27 +443,6 @@ async function fetchInternalAlerts() {
   return Array.isArray(payload.alerts) ? payload.alerts.map(normalizeAlert) : [];
 }
 
-async function fetchAlertLbAlerts() {
-  // The backend expands multi-village Alert LB alerts into village-level map circles.
-  const url = `${import.meta.env.VITE_API_BASE_URL || ''}/api/alert-lb`;
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Alert LB API returned ${response.status}`);
-  }
-
-  const payload = await response.json();
-  return Array.isArray(payload.alerts)
-    ? payload.alerts
-        .filter(isAlertLbType)
-        .map((alert) => normalizeAlert({
-          ...alert,
-          source: 'alert-lb',
-          sourceLabel: 'Alert LB',
-          verified: true,
-        }))
-    : [];
-}
-
 function useStrikeData() {
   const [events, setEvents] = useState([]);
   const [status, setStatus] = useState('connecting');
@@ -476,24 +455,19 @@ function useStrikeData() {
 
     async function fetchAlerts() {
       try {
-        const [internalResult, alertLbResult] = await Promise.allSettled([
-          fetchInternalAlerts(),
-          fetchAlertLbAlerts(),
-        ]);
+        const internalEvents = await fetchInternalAlerts();
         if (!active) {
           return;
         }
 
-        const internalEvents = internalResult.status === 'fulfilled' ? internalResult.value : [];
-        const alertLbEvents = alertLbResult.status === 'fulfilled' ? alertLbResult.value : [];
-
-        const internalWithoutAlertLbTypes = alertLbEvents.length > 0
-          ? internalEvents.filter((event) => !isAlertLbType(event))
-          : internalEvents;
         const localTestEvents = shouldIncludeLocalMapTestData() ? getLocalMapTestAlerts() : [];
         const nextEvents = filterExpiredAlerts(
-          [...alertLbEvents, ...internalWithoutAlertLbTypes, ...localTestEvents]
+          [...internalEvents, ...localTestEvents]
         ).filter(isActiveEventType);
+
+        const incoming = hasLoadedOnceRef.current
+          ? nextEvents.filter((event) => !previousIdsRef.current.has(event.id))
+          : [];
 
         // Always set events (so test data shows up even if fetch fails)
         setEvents(
@@ -502,13 +476,6 @@ function useStrikeData() {
         previousIdsRef.current = new Set(nextEvents.map((event) => event.id));
         hasLoadedOnceRef.current = true;
         setStatus(nextEvents.length > 0 ? 'live' : 'empty');
-
-        if (internalResult.status === 'rejected' && alertLbResult.status === 'rejected') {
-          console.error('All alert sources failed, showing local/test data if available');
-        }
-        const incoming = hasLoadedOnceRef.current
-          ? nextEvents.filter((event) => !previousIdsRef.current.has(event.id))
-          : [];
 
         if (incoming.length > 0) {
           playAlertTone();

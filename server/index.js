@@ -281,47 +281,42 @@ async function syncTelegramAlertsToStore() {
 }
 
 async function fetchExternalAlerts() {
-  try {
-    const alertLbUrl = getAlertLbApiUrl();
-    const response = await fetch(alertLbUrl, {
-      headers: {
-        accept: 'application/json, text/plain, */*',
-        'accept-language': 'ar,en-US;q=0.9,en;q=0.8',
-        'cache-control': 'no-cache',
-        pragma: 'no-cache',
-        referer: 'https://alert-lb.com/ar/',
-        'sec-fetch-dest': 'empty',
-        'sec-fetch-mode': 'cors',
-        'sec-fetch-site': 'same-origin',
-        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36',
-      },
-    });
-    if (!response.ok) {
-      const body = await response.text().catch(() => '');
-      console.error(`[external] Alert LB returned ${response.status}: ${body.slice(0, 180)}`);
-      return [];
-    }
-    
-    const json = await response.json();
-    const externalAlerts = json.alerts || [];
-
-    const expandedAlerts = await Promise.all(
-      externalAlerts
-        .filter((a) => a.type === 'drone' || a.type === 'plane')
-        .map(expandExternalAlertAreas)
-    );
-
-    return expandedAlerts
-      .flat()
-      .filter((a) => isValidCoordinatePair(a.lat, a.lng));
-  } catch (error) {
-    console.error('[external] fetch failed:', error.message);
-    return [];
+  const alertLbUrl = getAlertLbApiUrl();
+  const response = await fetch(alertLbUrl, {
+    headers: {
+      accept: 'application/json, text/plain, */*',
+      'accept-language': 'ar,en-US;q=0.9,en;q=0.8',
+      'cache-control': 'no-cache',
+      pragma: 'no-cache',
+      referer: 'https://alert-lb.com/ar/',
+      'sec-fetch-dest': 'empty',
+      'sec-fetch-mode': 'cors',
+      'sec-fetch-site': 'same-origin',
+      'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36',
+    },
+  });
+  if (!response.ok) {
+    const body = await response.text().catch(() => '');
+    throw new Error(`Alert LB returned ${response.status}: ${body.slice(0, 180)}`);
   }
+
+  const json = await response.json();
+  const externalAlerts = json.alerts || [];
+
+  const expandedAlerts = await Promise.all(
+    externalAlerts
+      .filter((a) => a.type === 'drone' || a.type === 'plane')
+      .map(expandExternalAlertAreas)
+  );
+
+  return expandedAlerts
+    .flat()
+    .filter((a) => isValidCoordinatePair(a.lat, a.lng));
 }
 
 const CACHE_TTL_MS = 90_000;
 let alertsCache = { data: null, fetchedAt: 0, refreshing: false };
+let externalAlertsCache = { data: [], fetchedAt: 0 };
 const WARPLANE_TTL_MS = 20 * 60 * 1000;
 
 function isExpiredWarplaneAlert(alert, now = Date.now()) {
@@ -359,7 +354,22 @@ async function refreshAlertsCache() {
       }
     }
 
-    const externalAlerts = filterActiveAlerts(filterExpiredWarplanes(await fetchExternalAlerts(), now));
+    let externalAlerts = externalAlertsCache.data;
+    let externalFetchFailed = false;
+    try {
+      externalAlerts = filterActiveAlerts(filterExpiredWarplanes(await fetchExternalAlerts(), now));
+      externalAlertsCache = {
+        data: externalAlerts,
+        fetchedAt: now,
+      };
+    } catch (error) {
+      externalFetchFailed = true;
+      externalAlerts = filterActiveAlerts(filterExpiredWarplanes(externalAlertsCache.data, now));
+      console.error(`[external] ${error.message}`);
+      if (externalAlerts.length > 0) {
+        console.warn(`[cache] using ${externalAlerts.length} cached external alerts after upstream failure`);
+      }
+    }
     
     const windowStart = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const { alerts: storedAlerts } = await queryAlertHistory({
@@ -383,7 +393,7 @@ async function refreshAlertsCache() {
     alertsCache.data = alerts;
     alertsCache.fetchedAt = Date.now();
     console.log(
-      `[cache] alerts refreshed - ${alerts.length} items (${storedAlerts.length} stored, ${syncResult.alerts.length} synced, ${syncResult.inserted} inserted)`
+      `[cache] alerts refreshed - ${alerts.length} items (${storedAlerts.length} stored, ${syncResult.alerts.length} synced, ${syncResult.inserted} inserted${externalFetchFailed ? ', external cached' : ''})`
     );
   } catch (error) {
     console.error('[cache] refresh failed:', error.message);
@@ -423,10 +433,18 @@ app.get('/api/alerts', async (_req, res) => {
 app.get('/api/alert-lb', async (_req, res) => {
   try {
     const alerts = await fetchExternalAlerts();
+    externalAlertsCache = {
+      data: filterActiveAlerts(filterExpiredWarplanes(alerts)),
+      fetchedAt: Date.now(),
+    };
     res.json({ alerts, source: 'alert-lb' });
   } catch (error) {
-    console.error('Failed to fetch Alert LB alerts:', error);
-    res.status(500).json({ error: 'Failed to fetch Alert LB alerts' });
+    console.error('Failed to fetch Alert LB alerts:', error.message);
+    res.json({
+      alerts: filterActiveAlerts(filterExpiredWarplanes(externalAlertsCache.data || [])),
+      source: 'alert-lb-cache',
+      stale: true,
+    });
   }
 });
 

@@ -21,6 +21,8 @@ import {
   SheetDescription,
 } from '@/components/animate-ui/components/radix/sheet';
 import MapComponent from './components/MapComponent';
+import RedEdgeGlow from './components/shared/RedEdgeGlow';
+import WarningToast from './components/shared/WarningToast';
 
 const LEBANON_CENTER = [33.8547, 35.8623];
 const ACTIVE_EVENT_TYPES = ['drone', 'warplane'];
@@ -447,9 +449,22 @@ function sortAlertsByTime(alerts) {
   return [...alerts].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 }
 
+function buildIncomingAlertToast(alert, locale) {
+  const typeLabel = formatEventLabel(alert.type, locale);
+  const location = alert.locationName || (locale === 'ar' ? 'لبنان' : 'Lebanon');
+
+  return {
+    title: locale === 'ar' ? 'تنبيه جديد' : 'New alert',
+    message: locale === 'ar'
+      ? `${typeLabel} في ${location}`
+      : `${typeLabel} in ${location}`,
+  };
+}
+
 function useStrikeData() {
   const [events, setEvents] = useState([]);
   const [status, setStatus] = useState('connecting');
+  const [incomingAlert, setIncomingAlert] = useState(null);
 
   const hasLoadedOnceRef = useRef(false);
   const previousIdsRef = useRef(new Set());
@@ -478,6 +493,7 @@ function useStrikeData() {
 
       if (allowTone && incoming.length > 0) {
         playAlertTone();
+        setIncomingAlert(sortAlertsByTime(incoming)[0]);
       }
     }
 
@@ -580,6 +596,8 @@ function useStrikeData() {
   return {
     events,
     status,
+    incomingAlert,
+    clearIncomingAlert: () => setIncomingAlert(null),
   };
 }
 
@@ -1364,7 +1382,6 @@ function LatestEventsButton({ events, locale, onFocus }) {
       <SheetTrigger asChild>
         <button type="button" aria-label={isAr ? 'Ø¢Ø®Ø± Ø§Ù„Ø£Ø­Ø¯Ø§Ø«' : 'Latest events'}
           className="relative flex h-10 shrink-0 items-center gap-2 rounded-full border border-red-500/15 bg-black/70 px-3 shadow-xl shadow-black/30 backdrop-blur-xl transition hover:bg-black/85">
-          <span className="absolute inset-0 rounded-full animate-ping opacity-35" style={{ backgroundColor: latestColor }} />
           <span className="relative h-3.5 w-3.5 rounded-full" style={{ backgroundColor: latestColor, boxShadow: `0 0 10px ${latestColor}` }} />
           <span className="relative text-xs font-medium text-slate-100">
             {isAr ? 'آخر الأحداث' : 'Latest'}
@@ -1758,7 +1775,7 @@ function TimelinePlayback({
 }
 
 function App() {
-  const { events, status } = useStrikeData();
+  const { events, status, incomingAlert, clearIncomingAlert } = useStrikeData();
   const [locale, setLocale] = useState('ar');
   const [activeStreamId, setActiveStreamId] = useState(null);
   const [focusedEvent, setFocusedEvent] = useState(null);
@@ -1769,6 +1786,13 @@ function App() {
   const [timelinePlaying, setTimelinePlaying] = useState(false);
   const [timelineRangeHours, setTimelineRangeHours] = useState(24);
   const [timelineProgress, setTimelineProgress] = useState(100);
+  const [warningToastState, setWarningToastState] = useState({
+    open: false,
+    key: 0,
+    title: '',
+    message: '',
+    alert: null,
+  });
   const shellRef = useRef(null);
 
   useEffect(() => {
@@ -1839,7 +1863,6 @@ function App() {
   const requestMapZoom = (delta) => {
     window.dispatchEvent(new CustomEvent('redalerts:map-zoom', { detail: { delta } }));
   };
-
   const statusText =
     status === 'live'
       ? `${locale === 'ar' ? '\u0645\u0631\u0635\u0648\u062f \u0645\u0646' : 'Mapped from'} ${activeWindowLabel}`
@@ -1851,8 +1874,31 @@ function App() {
           ? t.backendError
           : t.connecting;
 
+  useEffect(() => {
+    if (!incomingAlert) {
+      return;
+    }
+
+    const nextToast = buildIncomingAlertToast(incomingAlert, locale);
+    setWarningToastState((current) => ({
+      open: true,
+      key: current.key + 1,
+      title: nextToast.title,
+      message: nextToast.message,
+      alert: incomingAlert,
+    }));
+    clearIncomingAlert();
+  }, [incomingAlert, locale, clearIncomingAlert]);
+
   return (
-    <div ref={shellRef} className="workspace-shell min-h-screen text-slate-100" dir={t.dir}>
+    <RedEdgeGlow
+      intensity={warningToastState.open ? 0.72 : 0}
+      color="220,38,38"
+      pulse={warningToastState.open}
+      spread={260}
+      className="workspace-shell text-slate-100"
+    >
+    <div ref={shellRef} className="min-h-screen" dir={t.dir}>
 
       <div className="fixed left-3 top-3 z-[1200] flex max-w-[calc(100vw-1.5rem)] items-center gap-2">
         <LatestEventsButton events={events} locale={locale} onFocus={setFocusedEvent} />
@@ -2132,8 +2178,31 @@ function App() {
         />
       )}
 
-      
+      <WarningToast
+        key={warningToastState.key}
+        open={warningToastState.open}
+        title={warningToastState.title}
+        message={warningToastState.message}
+        duration={15000}
+        position="top-center"
+        onClick={() => {
+          if (warningToastState.alert) {
+            setFocusedEvent(warningToastState.alert);
+          }
+          setWarningToastState((current) => ({
+            ...current,
+            open: false,
+          }));
+        }}
+        onClose={() => {
+          setWarningToastState((current) => ({
+            ...current,
+            open: false,
+          }));
+        }}
+      />
     </div>
+    </RedEdgeGlow>
   );
 }
 

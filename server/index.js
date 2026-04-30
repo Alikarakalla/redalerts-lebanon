@@ -439,8 +439,7 @@ async function refreshAlertsCache() {
       }
     }
 
-    let externalAlerts = externalAlertsCache.data;
-    let externalFetchFailed = false;
+    let externalAlerts = [];
     try {
       externalAlerts = filterActiveAlerts(filterExpiredWarplanes(await fetchExternalAlerts(), now));
       externalAlertsCache = {
@@ -448,12 +447,12 @@ async function refreshAlertsCache() {
         fetchedAt: now,
       };
     } catch (error) {
-      externalFetchFailed = true;
-      externalAlerts = filterActiveAlerts(filterExpiredWarplanes(externalAlertsCache.data, now));
       console.error(`[external] ${error.message}`);
-      if (externalAlerts.length > 0) {
-        console.warn(`[cache] using ${externalAlerts.length} cached external alerts after upstream failure`);
-      }
+      externalAlerts = [];
+      externalAlertsCache = {
+        data: [],
+        fetchedAt: now,
+      };
     }
     
     const windowStart = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
@@ -478,7 +477,7 @@ async function refreshAlertsCache() {
     alertsCache.data = alerts;
     alertsCache.fetchedAt = Date.now();
     console.log(
-      `[cache] alerts refreshed - ${alerts.length} items (${storedAlerts.length} stored, ${syncResult.alerts.length} synced, ${syncResult.inserted} inserted${externalFetchFailed ? ', external cached' : ''})`
+      `[cache] alerts refreshed - ${alerts.length} items (${storedAlerts.length} stored, ${syncResult.alerts.length} synced, ${syncResult.inserted} inserted)`
     );
   } catch (error) {
     console.error('[cache] refresh failed:', error.message);
@@ -572,11 +571,11 @@ app.get('/api/alert-lb', async (_req, res) => {
     res.json({ alerts, source: 'alert-lb' });
   } catch (error) {
     console.error('Failed to fetch Alert LB alerts:', error.message);
-    res.json({
-      alerts: filterActiveAlerts(filterExpiredWarplanes(externalAlertsCache.data || [])),
-      source: 'alert-lb-cache',
-      stale: true,
-    });
+    externalAlertsCache = {
+      data: [],
+      fetchedAt: Date.now(),
+    };
+    res.json({ alerts: [], source: 'alert-lb', stale: true });
   }
 });
 

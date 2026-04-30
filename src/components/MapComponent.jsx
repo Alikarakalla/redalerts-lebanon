@@ -75,6 +75,16 @@ function isInLebanon(lng, lat) {
       && lat >= LEBANON_BOUNDS.minLat && lat <= LEBANON_BOUNDS.maxLat;
 }
 
+const PLACE_LABELS_URL = 'https://alert-lb.com/lebanon-places.geojson';
+const PLACE_LABEL_STYLES = {
+  city: { minZoom: 7, size: 13, weight: 800 },
+  town: { minZoom: 9, size: 11, weight: 700 },
+  village: { minZoom: 11, size: 10, weight: 600 },
+  suburb: { minZoom: 12, size: 9.5, weight: 500 },
+  hamlet: { minZoom: 13, size: 9.5, weight: 500 },
+};
+const PLACE_LABEL_ORDER = ['city', 'town', 'village', 'suburb', 'hamlet'];
+
 const TYPE_STYLES = {
   drone: { base: '#f59e0b' },
   warplane: { base: '#38bdf8' },
@@ -134,66 +144,20 @@ function getMarkerRadius(severity, count = 1, zoomLevel = DEFAULT_ZOOM) {
   return Math.min((base + countBoost) * zoomScale, 30);
 }
 
-function getCoverageRadiusMeters(type, severity, count = 1, radiusKm = null) {
+function getCoverageRadiusMeters(type, scope, radiusKm = null) {
   const explicitRadiusKm = Number(radiusKm);
   if (Number.isFinite(explicitRadiusKm) && explicitRadiusKm > 0) {
     return Math.round(explicitRadiusKm * 1000);
   }
 
-  const typeRadius = {
-    drone: 1450,
-    warplane: 2200,
-    airstrike: 1250,
-    carAttack: 700,
-    artillery: 1100,
-    explosion: 850,
-    missile: 1600,
-    warning: 3500,
-  };
-  const severityBoost = severity === 'high' ? 1.25 : severity === 'medium' ? 1.08 : 0.92;
-  const clusterBoost = count <= 1 ? 1 : Math.min(1 + Math.log2(count) * 0.18, 1.55);
-
-  return Math.round((typeRadius[type] ?? 900) * severityBoost * clusterBoost);
-}
-
-function getZoomedOutCoverageRadiusMeters(incident, coverageRadiusMeters) {
-  const type = incident.type;
-  const minRadiusByType = {
-    drone: 1800,
-    warplane: 3200,
-    airstrike: 2200,
-    carAttack: 1600,
-    artillery: 2000,
-    explosion: 1800,
-    missile: 2500,
-    warning: 4200,
-  };
-  const maxRadiusByType = {
-    drone: 4200,
-    warplane: 15000,
-    airstrike: 5500,
-    carAttack: 3200,
-    artillery: 4800,
-    explosion: 4200,
-    missile: 7000,
-    warning: 12000,
-  };
-  const multiplierByType = {
-    drone: 1.15,
-    warplane: 1.85,
-    airstrike: 1.55,
-    carAttack: 1.7,
-    artillery: 1.6,
-    explosion: 1.65,
-    missile: 1.7,
-    warning: 1.2,
+  const scopeRadius = {
+    village: 1500,
+    multi_village: 3000,
+    district: 8000,
+    governorate: 20000,
   };
 
-  const scaledRadius = Math.round(coverageRadiusMeters * (multiplierByType[type] ?? 1.5));
-  const minRadius = minRadiusByType[type] ?? 1800;
-  const maxRadius = maxRadiusByType[type] ?? 5000;
-
-  return Math.max(minRadius, Math.min(scaledRadius, maxRadius));
+  return scopeRadius[scope] ?? (type === 'warplane' ? 3000 : 1500);
 }
 
 function getCoverageRadiusPixels(map, lat, lng, radiusMeters) {
@@ -223,99 +187,8 @@ function zoomToCoverageArea(map, lat, lng, radiusMeters) {
   });
 }
 
-function normalizeLocationKey(locationName) {
-  return String(locationName || 'unknown')
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, ' ');
-}
-
-function getDistanceMeters(a, b) {
-  const meanLatRad = (((a.lat + b.lat) / 2) * Math.PI) / 180;
-  const latMeters = (a.lat - b.lat) * 111_320;
-  const lngMeters = (a.lng - b.lng) * 111_320 * Math.cos(meanLatRad);
-  return Math.hypot(latMeters, lngMeters);
-}
-
-function offsetIncidentsWithSameVillage(incidents) {
-  const grouped = incidents.reduce((groups, incident) => {
-    const key = normalizeLocationKey(incident.primaryLocation);
-    const group = groups.get(key) || [];
-    group.push(incident);
-    groups.set(key, group);
-    return groups;
-  }, new Map());
-
-  for (const group of grouped.values()) {
-    if (group.length <= 1) continue;
-    const offsetMeters = 180;
-    const centerIndex = (group.length - 1) / 2;
-    group
-      .sort((a, b) => String(a.type).localeCompare(String(b.type)))
-      .forEach((incident, index) => {
-        const angle = -Math.PI / 2 + ((index - centerIndex) * (Math.PI * 2)) / Math.max(group.length, 4);
-        const latOffset = (Math.sin(angle) * offsetMeters) / 111_320;
-        const lngOffset = (Math.cos(angle) * offsetMeters) / (111_320 * Math.cos((incident.lat * Math.PI) / 180));
-        incident.lat += latOffset;
-        incident.lng += lngOffset;
-      });
-  }
-  return incidents;
-}
-
-function offsetNearbyIncidents(incidents) {
-  const remaining = new Set(incidents.map((incident, index) => index));
-  const groups = [];
-  const proximityMeters = 320;
-
-  while (remaining.size > 0) {
-    const [seedIndex] = remaining;
-    remaining.delete(seedIndex);
-    const group = [seedIndex];
-    const queue = [seedIndex];
-
-    while (queue.length > 0) {
-      const currentIndex = queue.shift();
-      const currentIncident = incidents[currentIndex];
-
-      for (const candidateIndex of [...remaining]) {
-        const candidateIncident = incidents[candidateIndex];
-        if (getDistanceMeters(currentIncident, candidateIncident) > proximityMeters) {
-          continue;
-        }
-        remaining.delete(candidateIndex);
-        group.push(candidateIndex);
-        queue.push(candidateIndex);
-      }
-    }
-
-    groups.push(group);
-  }
-
-  for (const group of groups) {
-    if (group.length <= 1) continue;
-
-    const centerLat = group.reduce((sum, index) => sum + incidents[index].lat, 0) / group.length;
-    const centerLng = group.reduce((sum, index) => sum + incidents[index].lng, 0) / group.length;
-    const ringMeters = Math.min(120 + (group.length - 2) * 28, 220);
-
-    group
-      .map((index) => incidents[index])
-      .sort((a, b) => String(a.type).localeCompare(String(b.type)))
-      .forEach((incident, index) => {
-        const angle = -Math.PI / 2 + (index * Math.PI * 2) / group.length;
-        const latOffset = (Math.sin(angle) * ringMeters) / 111_320;
-        const lngOffset = (Math.cos(angle) * ringMeters) / (111_320 * Math.cos((centerLat * Math.PI) / 180));
-        incident.lat = centerLat + latOffset;
-        incident.lng = centerLng + lngOffset;
-      });
-  }
-
-  return incidents;
-}
-
 function clusterEvents(events, locale) {
-  const incidents = events
+  return events
     .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
     .map((event) => ({
       id: event.id,
@@ -326,6 +199,7 @@ function clusterEvents(events, locale) {
       timestamp: event.timestamp,
       severity: event.severity,
       radiusKm: event.radiusKm ?? event.radius_km,
+      scope: event.scope,
       count: 1,
       items: [event],
       primaryLocation: event.locationName,
@@ -337,7 +211,6 @@ function clusterEvents(events, locale) {
         event.locationName
       ),
     }));
-  return offsetNearbyIncidents(offsetIncidentsWithSameVillage(incidents));
 }
 
 function buildEventSummary(incident, locale) {
@@ -582,34 +455,24 @@ const MapMarker = React.memo(({ incident, locale, zoomLevel, map }) => {
   const ageBucket = getAgeBucket(incident.timestamp);
   const style = getMarkerStyle(incident.type, incident.timestamp);
   const radius = getMarkerRadius(incident.severity, incident.count, zoomLevel);
-  const coverageRadiusMeters = getCoverageRadiusMeters(incident.type, incident.severity, incident.count, incident.radiusKm);
+  const coverageRadiusMeters = getCoverageRadiusMeters(incident.type, incident.scope, incident.radiusKm);
   const isFresh = ageBucket === 'fresh';
-  const isZoomedOutCoverageMode = zoomLevel < 11;
-  const displayCoverageRadiusMeters = isZoomedOutCoverageMode
-    ? getZoomedOutCoverageRadiusMeters(incident, coverageRadiusMeters)
-    : coverageRadiusMeters;
+  const displayCoverageRadiusMeters = coverageRadiusMeters;
   const coveragePixelRadius = getCoverageRadiusPixels(map, incident.lat, incident.lng, displayCoverageRadiusMeters);
   const icon = useMemo(() => customIcon(incident.type, style.base, style.fillOpacity + 0.3, incident.count, radius, isFresh, zoomLevel, coveragePixelRadius), 
     [incident.type, style.base, style.fillOpacity, incident.count, radius, isFresh, zoomLevel, coveragePixelRadius]);
   const handleClick = useCallback(() => zoomToCoverageArea(map, incident.lat, incident.lng, coverageRadiusMeters), 
     [map, incident.lat, incident.lng, coverageRadiusMeters]);
   const showCoverage = true;
-  const coveragePathOptions = isZoomedOutCoverageMode
-    ? {
-        color: style.base,
-        fillColor: style.base,
-        fillOpacity: 0,
-        opacity: isFresh ? 0.92 : ageBucket === 'recent' ? 0.72 : 0.55,
-        weight: 1.4,
-        dashArray: '7 9',
-      }
-    : {
-        color: style.base,
-        fillColor: style.base,
-        fillOpacity: isFresh ? 0.08 : ageBucket === 'recent' ? 0.05 : 0.03,
-        opacity: isFresh ? 0.85 : ageBucket === 'recent' ? 0.55 : 0.30,
-        weight: isFresh ? 2 : 1.5,
-      };
+  const isWarplane = incident.type === 'warplane';
+  const coveragePathOptions = {
+    color: style.base,
+    fillColor: style.base,
+    fillOpacity: isWarplane ? 0 : 0.08,
+    opacity: isWarplane ? 0.5 : 0.35,
+    weight: isWarplane ? 1 : 1.5,
+    dashArray: isWarplane ? '6 8' : undefined,
+  };
 
   return (
     <React.Fragment>
@@ -652,7 +515,7 @@ function MapEvents({ events, focusedEvent, locale }) {
   }, [events, locale]);
   useEffect(() => {
     if (focusedEvent && focusedEvent.lat && focusedEvent.lng && isInLebanon(focusedEvent.lng, focusedEvent.lat)) {
-      const radiusMeters = getCoverageRadiusMeters(focusedEvent.type, focusedEvent.severity ?? 'medium', 1, focusedEvent.radiusKm ?? focusedEvent.radius_km);
+      const radiusMeters = getCoverageRadiusMeters(focusedEvent.type, focusedEvent.scope, focusedEvent.radiusKm ?? focusedEvent.radius_km);
       zoomToCoverageArea(map, focusedEvent.lat, focusedEvent.lng, radiusMeters);
     }
   }, [focusedEvent, map]);
@@ -668,6 +531,171 @@ function MapPanes() {
       pane.style.pointerEvents = 'none';
     }
   }, [map]);
+  return null;
+}
+
+class PlaceLabelsLayer extends L.Layer {
+  constructor(features, locale, isDarkMode) {
+    super();
+    this.features = features;
+    this.locale = locale;
+    this.isDarkMode = isDarkMode;
+    this.frameId = null;
+  }
+
+  setOptions(locale, isDarkMode) {
+    this.locale = locale;
+    this.isDarkMode = isDarkMode;
+    this.scheduleDraw();
+  }
+
+  onAdd(map) {
+    this.map = map;
+    this.canvas = L.DomUtil.create('canvas', 'lb-labels-canvas');
+    this.canvas.style.position = 'absolute';
+    this.canvas.style.pointerEvents = 'none';
+    this.canvas.style.willChange = 'transform';
+    (map.getPane('labelPane') || map.getPanes().overlayPane).appendChild(this.canvas);
+    map.on('moveend zoomend resize', this.reset, this);
+    map.on('zoomstart zoomanim', this.hide, this);
+    this.reset();
+    return this;
+  }
+
+  onRemove(map) {
+    if (this.canvas?.parentNode) {
+      this.canvas.parentNode.removeChild(this.canvas);
+    }
+    map.off('moveend zoomend resize', this.reset, this);
+    map.off('zoomstart zoomanim', this.hide, this);
+    if (this.frameId) {
+      cancelAnimationFrame(this.frameId);
+    }
+    this.map = null;
+    this.canvas = null;
+    return this;
+  }
+
+  hide() {
+    if (this.canvas) {
+      this.canvas.style.opacity = '0';
+    }
+  }
+
+  reset() {
+    if (!this.map || !this.canvas) return;
+    const size = this.map.getSize();
+    const scale = window.devicePixelRatio || 1;
+    this.canvas.width = Math.round(size.x * scale);
+    this.canvas.height = Math.round(size.y * scale);
+    this.canvas.style.width = `${size.x}px`;
+    this.canvas.style.height = `${size.y}px`;
+    L.DomUtil.setPosition(this.canvas, this.map.containerPointToLayerPoint([0, 0]));
+    this.canvas.style.opacity = '1';
+    this.scheduleDraw();
+  }
+
+  scheduleDraw() {
+    if (this.frameId) {
+      cancelAnimationFrame(this.frameId);
+    }
+    this.frameId = requestAnimationFrame(() => this.draw());
+  }
+
+  draw() {
+    if (!this.map || !this.canvas) return;
+    const context = this.canvas.getContext('2d');
+    if (!context) return;
+
+    const scale = window.devicePixelRatio || 1;
+    const zoom = this.map.getZoom();
+    const bounds = this.map.getBounds();
+    const placed = [];
+    const strokeColor = this.isDarkMode ? '#0a0a0a' : '#f8fafc';
+    const mainColor = this.isDarkMode ? '#f8fafc' : '#0f172a';
+    const mutedColor = this.isDarkMode ? '#a8b1d1' : '#475569';
+
+    context.setTransform(scale, 0, 0, scale, 0, 0);
+    context.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+
+    for (const placeType of PLACE_LABEL_ORDER) {
+      const style = PLACE_LABEL_STYLES[placeType];
+      if (!style || zoom < style.minZoom) continue;
+
+      context.font = `${style.weight} ${style.size}px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
+      const labelColor = placeType === 'city' || placeType === 'town' ? mainColor : mutedColor;
+      const halfHeight = style.size / 2;
+
+      for (const feature of this.features) {
+        if (feature?.properties?.p !== placeType) continue;
+        const [lng, lat] = feature.geometry?.coordinates || [];
+        if (!Number.isFinite(lat) || !Number.isFinite(lng) || !bounds.contains([lat, lng])) continue;
+
+        const label = this.locale === 'ar'
+          ? feature.properties.na || feature.properties.n || feature.properties.ne
+          : feature.properties.ne || feature.properties.n || feature.properties.na;
+        if (!label) continue;
+
+        const point = this.map.latLngToContainerPoint([lat, lng]);
+        const halfWidth = context.measureText(label).width / 2;
+        const box = {
+          x1: point.x - halfWidth - 4,
+          y1: point.y - halfHeight - 2,
+          x2: point.x + halfWidth + 4,
+          y2: point.y + halfHeight + 2,
+        };
+        if (placed.some((item) => box.x1 < item.x2 && box.x2 > item.x1 && box.y1 < item.y2 && box.y2 > item.y1)) {
+          continue;
+        }
+
+        placed.push(box);
+        context.lineWidth = 3;
+        context.strokeStyle = strokeColor;
+        context.strokeText(label, point.x, point.y);
+        context.fillStyle = labelColor;
+        context.fillText(label, point.x, point.y);
+      }
+    }
+  }
+}
+
+function PlaceLabels({ locale, isDarkMode }) {
+  const map = useMap();
+  const layerRef = React.useRef(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(PLACE_LABELS_URL)
+      .then((response) => {
+        if (!response.ok) throw new Error(`Place labels returned ${response.status}`);
+        return response.json();
+      })
+      .then((payload) => {
+        if (cancelled) return;
+        const features = Array.isArray(payload.features) ? payload.features : [];
+        const layer = new PlaceLabelsLayer(features, locale, isDarkMode);
+        layer.addTo(map);
+        layerRef.current = layer;
+      })
+      .catch((error) => {
+        console.error('Failed to load place labels:', error);
+      });
+
+    return () => {
+      cancelled = true;
+      if (layerRef.current) {
+        map.removeLayer(layerRef.current);
+        layerRef.current = null;
+      }
+    };
+  }, [map]);
+
+  useEffect(() => {
+    layerRef.current?.setOptions(locale, isDarkMode);
+  }, [locale, isDarkMode]);
+
   return null;
 }
 
@@ -699,8 +727,9 @@ function useMapDarkMode() {
 export default function MapComponent({ events = [], focusedEvent = null, locale = 'ar', activeType = 'all', activeWindow = '24h', replayTime = null, replayStartTime = null }) {
   const isDarkMode = useMapDarkMode();
   const mapRef = React.useRef(null);
-  const baseTileUrl = isDarkMode ? 'https://a.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}.png' : 'https://a.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}.png';
-  const labelTileUrl = isDarkMode ? 'https://a.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}.png' : 'https://a.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}.png';
+  const baseTileUrl = isDarkMode
+    ? 'https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png'
+    : 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png';
   useEffect(() => {
     const handleTimelineZoom = (event) => {
       const delta = Number(event.detail?.delta || 0);
@@ -726,9 +755,9 @@ export default function MapComponent({ events = [], focusedEvent = null, locale 
       <div className={`absolute inset-0 ${isDarkMode ? 'leaflet-dark-wrapper' : 'leaflet-light-wrapper'}`} dir="ltr">
         <MapContainer center={DEFAULT_CENTER} zoom={DEFAULT_ZOOM} zoomControl={false} className="h-full w-full" minZoom={MIN_ZOOM} maxZoom={MAX_ZOOM} ref={mapRef}>
           <MapPanes />
-          <TileLayer key={`base-${isDarkMode ? 'dark' : 'light'}`} attribution='&copy; CartoDB' url={baseTileUrl} />
+          <TileLayer key={`base-${isDarkMode ? 'dark' : 'light'}`} attribution='&copy; CartoDB' url={baseTileUrl} subdomains={['a', 'b', 'c', 'd']} />
+          <PlaceLabels locale={locale} isDarkMode={isDarkMode} />
           <MapEvents events={filteredEvents} focusedEvent={focusedEvent} locale={locale} />
-          <TileLayer key={`labels-${isDarkMode ? 'dark' : 'light'}`} pane="labelPane" url={labelTileUrl} />
         </MapContainer>
       </div>
       <style>{`
@@ -736,6 +765,7 @@ export default function MapComponent({ events = [], focusedEvent = null, locale 
         .leaflet-popup-content-wrapper { background: rgba(12, 12, 12, 0.95) !important; border: 1px solid rgba(255, 255, 255, 0.1) !important; border-radius: 12px !important; color: white !important; padding: 0 !important; max-width: 280px !important; }
         .leaflet-popup-content { margin: 0 !important; width: auto !important; max-height: 300px; overflow-y: auto; }
         .leaflet-popup-tip { background: rgba(15, 15, 15, 0.9) !important; }
+        .lb-labels-canvas { z-index: 455; }
         .event-marker { position: relative; display: grid; place-items: center; will-change: transform; }
         .event-marker--drone-uav {
           pointer-events: auto;

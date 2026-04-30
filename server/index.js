@@ -21,11 +21,13 @@ app.use(express.json());
 
 const ACTIVE_ALERT_TYPES = new Set(['drone', 'warplane']);
 const TELEGRAM_CHANNELS_ENABLED = false;
+const PLACE_LABELS_URL = 'https://alert-lb.com/lebanon-places.geojson';
 const NON_LOCATION_AREA_LABELS = new Set([
   '\u062a\u0631\u0643\u064a\u0632 \u0645\u0633\u064a\u0631',
   '\u0623\u0642\u0635\u0649 \u062f\u0631\u062c\u0627\u062a \u0627\u0644\u062d\u0630\u0631',
   '\u0645\u0642\u0627\u062a\u0644\u0627\u062a \u062d\u0631\u0628\u064a\u0629',
 ]);
+let placeLabelIndexPromise = null;
 
 function isActiveAlertType(alert) {
   return ACTIVE_ALERT_TYPES.has(alert?.type);
@@ -33,6 +35,65 @@ function isActiveAlertType(alert) {
 
 function filterActiveAlerts(alerts) {
   return alerts.filter(isActiveAlertType);
+}
+
+function normalizePlaceLabel(label) {
+  return String(label || '')
+    .replace(/_/gu, ' ')
+    .replace(/\s+/gu, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+async function getPlaceLabelIndex() {
+  if (!placeLabelIndexPromise) {
+    placeLabelIndexPromise = fetch(PLACE_LABELS_URL, {
+      headers: {
+        accept: 'application/geo+json, application/json, */*',
+        'accept-language': 'ar,en-US;q=0.9,en;q=0.8',
+        referer: 'https://alert-lb.com/ar/',
+        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36',
+      },
+    })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`Place labels returned ${response.status}`);
+        }
+        return response.json();
+      })
+      .then((payload) => {
+        const index = new Map();
+        const features = Array.isArray(payload.features) ? payload.features : [];
+
+        for (const feature of features) {
+          const [lng, lat] = feature.geometry?.coordinates || [];
+          if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+            continue;
+          }
+
+          for (const label of [feature.properties?.na, feature.properties?.n, feature.properties?.ne]) {
+            const key = normalizePlaceLabel(label);
+            if (key && !index.has(key)) {
+              index.set(key, { lat, lng, resolved: true, source: 'alert-lb-places', label });
+            }
+          }
+        }
+
+        return index;
+      })
+      .catch((error) => {
+        placeLabelIndexPromise = null;
+        console.warn('[places] failed to load Alert LB place labels:', error.message);
+        return new Map();
+      });
+  }
+
+  return placeLabelIndexPromise;
+}
+
+async function resolvePlaceLabelCoordinates(label) {
+  const index = await getPlaceLabelIndex();
+  return index.get(normalizePlaceLabel(label)) || null;
 }
 
 function normalizeExternalType(type) {
@@ -87,7 +148,7 @@ async function resolveExternalArea(area) {
     return null;
   }
 
-  const coords = await resolveCoordinates(label);
+  const coords = await resolvePlaceLabelCoordinates(label) || await resolveCoordinates(label);
   if (!coords?.resolved || !isValidCoordinatePair(coords.lat, coords.lng)) {
     return null;
   }

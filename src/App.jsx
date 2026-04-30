@@ -23,6 +23,9 @@ import {
 import MapComponent from './components/MapComponent';
 
 const LEBANON_CENTER = [33.8547, 35.8623];
+const ACTIVE_EVENT_TYPES = ['drone', 'warplane'];
+const ACTIVE_EVENT_TYPE_SET = new Set(ACTIVE_EVENT_TYPES);
+const TELEGRAM_UI_ENABLED = false;
 
 const TIMELINE_LEGEND = {
   en: {
@@ -426,6 +429,10 @@ function isAlertLbType(event) {
   return ALERT_LB_TYPES.has(event.type);
 }
 
+function isActiveEventType(event) {
+  return ACTIVE_EVENT_TYPE_SET.has(event.type) && event.source !== 'telegram';
+}
+
 async function fetchInternalAlerts() {
   const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || ''}/api/alerts`);
   if (!response.ok) {
@@ -488,7 +495,7 @@ function useStrikeData() {
         const localTestEvents = shouldIncludeLocalMapTestData() ? getLocalMapTestAlerts() : [];
         const nextEvents = filterExpiredAlerts(
           [...alertLbEvents, ...internalWithoutAlertLbTypes, ...localTestEvents]
-        );
+        ).filter(isActiveEventType);
 
         // Always set events (so test data shows up even if fetch fails)
         setEvents(
@@ -1334,7 +1341,7 @@ function TelegramChannelButton({ locale }) {
     </IconTooltip>
   );
 }
-const FILTER_TYPES = ['all', 'drone', 'warplane', 'airstrike', 'carAttack', 'artillery', 'explosion', 'missile', 'warning'];
+const FILTER_TYPES = ['all', ...ACTIVE_EVENT_TYPES];
 const FILTER_WINDOWS = ['30m', '1h', '2h', '3h', '6h', '12h', '24h'];
 
 function getTypeFilterLabel(type, locale) {
@@ -1487,7 +1494,7 @@ function TimelinePlayback({
                   <div className="hidden bg-white/10 sm:block" />
 
                   <div className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-1">
-                    {Object.entries(legend.typeLegend).map(([key, label]) => (
+                    {Object.entries(legend.typeLegend).filter(([key]) => ACTIVE_EVENT_TYPE_SET.has(key)).map(([key, label]) => (
                       <div key={key} className="flex items-center justify-between gap-3 text-xs font-medium">
                         <span className={mainTextClass}>{label}</span>
                         <span
@@ -1747,7 +1754,7 @@ function App() {
           {isTopAreaCollapsed ? <ChevronDown className="h-5 w-5" /> : <ChevronUp className="h-5 w-5" />}
         </button>
         <LatestEventsButton events={events} locale={locale} onFocus={setFocusedEvent} />
-        <TelegramChannelButton locale={locale} />
+        {TELEGRAM_UI_ENABLED ? <TelegramChannelButton locale={locale} /> : null}
         <FilterSheetButton
           locale={locale}
           activeType={activeType}

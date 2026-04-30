@@ -18,6 +18,17 @@ app.set('trust proxy', true);
 app.use(cors());
 app.use(express.json());
 
+const ACTIVE_ALERT_TYPES = new Set(['drone', 'warplane']);
+const TELEGRAM_CHANNELS_ENABLED = false;
+
+function isActiveAlertType(alert) {
+  return ACTIVE_ALERT_TYPES.has(alert?.type);
+}
+
+function filterActiveAlerts(alerts) {
+  return alerts.filter(isActiveAlertType);
+}
+
 app.get('/api/health', async (_req, res) => {
   res.json({
     ok: true,
@@ -189,13 +200,15 @@ async function refreshAlertsCache() {
   try {
     const now = Date.now();
     let syncResult = { alerts: [], inserted: 0 };
-    try {
-      syncResult = await syncTelegramAlertsToStore();
-    } catch (error) {
-      console.warn('[cache] telegram sync failed, using stored alerts:', error.message);
+    if (TELEGRAM_CHANNELS_ENABLED) {
+      try {
+        syncResult = await syncTelegramAlertsToStore();
+      } catch (error) {
+        console.warn('[cache] telegram sync failed, using stored alerts:', error.message);
+      }
     }
 
-    const externalAlerts = filterExpiredWarplanes(await fetchExternalAlerts(), now);
+    const externalAlerts = filterActiveAlerts(filterExpiredWarplanes(await fetchExternalAlerts(), now));
     
     const windowStart = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const { alerts: storedAlerts } = await queryAlertHistory({
@@ -208,12 +221,11 @@ async function refreshAlertsCache() {
     // We prioritize external alerts for drones and planes
     const internalAlerts = storedAlerts.length > 0 ? storedAlerts : syncResult.alerts;
     
-    // Filter out internal drones/planes if we have external ones
-    const filteredInternal = filterExpiredWarplanes(internalAlerts, now).filter(
-      (a) => a.type !== 'drone' && a.type !== 'warplane'
-    );
+    const filteredInternal = filterActiveAlerts(filterExpiredWarplanes(internalAlerts, now))
+      .filter((a) => a.source !== 'telegram')
+      .filter((a) => externalAlerts.length === 0 || !ACTIVE_ALERT_TYPES.has(a.type));
 
-    const alerts = filterExpiredWarplanes([...externalAlerts, ...filteredInternal], now).sort(
+    const alerts = filterActiveAlerts(filterExpiredWarplanes([...externalAlerts, ...filteredInternal], now)).sort(
       (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
     );
 
@@ -232,7 +244,7 @@ async function refreshAlertsCache() {
 app.get('/api/alerts', async (_req, res) => {
   if (alertsCache.data && Date.now() - alertsCache.fetchedAt < CACHE_TTL_MS) {
     return res.json({
-      alerts: filterExpiredWarplanes(alertsCache.data),
+      alerts: filterActiveAlerts(filterExpiredWarplanes(alertsCache.data)),
       cached: true,
       storage: getStorageMode(),
     });
@@ -240,7 +252,7 @@ app.get('/api/alerts', async (_req, res) => {
 
   if (alertsCache.data) {
     res.json({
-      alerts: filterExpiredWarplanes(alertsCache.data),
+      alerts: filterActiveAlerts(filterExpiredWarplanes(alertsCache.data)),
       cached: true,
       storage: getStorageMode(),
     });
@@ -250,7 +262,7 @@ app.get('/api/alerts', async (_req, res) => {
 
   try {
     await refreshAlertsCache();
-    res.json({ alerts: alertsCache.data || [], cached: false, storage: getStorageMode() });
+    res.json({ alerts: filterActiveAlerts(alertsCache.data || []), cached: false, storage: getStorageMode() });
   } catch (error) {
     console.error('Failed to fetch alerts:', error);
     res.status(500).json({ error: 'Failed to fetch alerts' });
@@ -321,6 +333,10 @@ app.get('/api/history/export', async (req, res) => {
 
 app.get('/api/telegram/latest', async (req, res) => {
   try {
+    if (!TELEGRAM_CHANNELS_ENABLED) {
+      return res.json({ messages: [], disabled: true });
+    }
+
     const limit = Math.min(Number(req.query.limit || 10), 50);
     const channel = typeof req.query.channel === 'string' ? req.query.channel : undefined;
     const messages = await getLatestChannelMessages(limit, channel);
@@ -340,7 +356,7 @@ app.post('/api/process-message', async (req, res) => {
     }
 
     const processed = await processMessage(text, sourceChannel);
-    const alerts = getMappableAlerts(processed);
+    const alerts = filterActiveAlerts(getMappableAlerts(processed));
     const results = [];
 
     for (const alert of alerts) {
@@ -359,33 +375,37 @@ async function bootstrap() {
     console.log(`API server listening on http://localhost:${config.port}`);
   });
 
-  try {
-    await startTelegramListener(async ({ text, sourceChannel }) => {
-      try {
-        const processed = await processMessage(text, sourceChannel);
-        const alerts = getMappableAlerts(processed);
+  if (TELEGRAM_CHANNELS_ENABLED) {
+    try {
+      await startTelegramListener(async ({ text, sourceChannel }) => {
+        try {
+          const processed = await processMessage(text, sourceChannel);
+          const alerts = filterActiveAlerts(getMappableAlerts(processed));
 
-        if (alerts.length === 0) {
-          return;
-        }
-
-        for (const alert of alerts) {
-          const result = await saveAlert(alert);
-          if (result.saved) {
-            console.log(`Saved alert from ${sourceChannel}: ${alert.locationName}`);
+          if (alerts.length === 0) {
+            return;
           }
-        }
 
-        alertsCache.fetchedAt = 0;
-      } catch (error) {
-        console.error('Listener pipeline failed:', error);
-      }
-    });
-  } catch (error) {
-    console.error('\nFATAL TELEGRAM ERROR:', error.message);
-    console.error(
-      'The backend will stay running to serve the dashboard, but live alerts are disabled until you update your TELEGRAM_SESSION string!'
-    );
+          for (const alert of alerts) {
+            const result = await saveAlert(alert);
+            if (result.saved) {
+              console.log(`Saved alert from ${sourceChannel}: ${alert.locationName}`);
+            }
+          }
+
+          alertsCache.fetchedAt = 0;
+        } catch (error) {
+          console.error('Listener pipeline failed:', error);
+        }
+      });
+    } catch (error) {
+      console.error('\nFATAL TELEGRAM ERROR:', error.message);
+      console.error(
+        'The backend will stay running to serve the dashboard, but live alerts are disabled until you update your TELEGRAM_SESSION string!'
+      );
+    }
+  } else {
+    console.log('[telegram] channel listener disabled');
   }
 
   console.log('[cache] Pre-warming alerts cache...');

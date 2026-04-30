@@ -21,6 +21,7 @@ app.use(express.json());
 
 const ACTIVE_ALERT_TYPES = new Set(['drone', 'warplane']);
 const TELEGRAM_CHANNELS_ENABLED = false;
+const DEFAULT_ALERT_LB_API_URL = 'https://icy-limit-4d83.karakalla02.workers.dev/';
 const PLACE_LABELS_URL = 'https://alert-lb.com/lebanon-places.geojson';
 const NON_LOCATION_AREA_LABELS = new Set([
   '\u062a\u0631\u0643\u064a\u0632 \u0645\u0633\u064a\u0631',
@@ -28,6 +29,19 @@ const NON_LOCATION_AREA_LABELS = new Set([
   '\u0645\u0642\u0627\u062a\u0644\u0627\u062a \u062d\u0631\u0628\u064a\u0629',
 ]);
 let placeLabelIndexPromise = null;
+
+function getAlertLbApiUrl() {
+  const configuredUrl = String(process.env.ALERT_LB_API_URL || '').trim();
+  if (
+    !configuredUrl
+    || configuredUrl.includes('YOUR-ACCOUNT')
+    || configuredUrl.includes('alert-lb.com')
+  ) {
+    return DEFAULT_ALERT_LB_API_URL;
+  }
+
+  return configuredUrl;
+}
 
 function isActiveAlertType(alert) {
   return ACTIVE_ALERT_TYPES.has(alert?.type);
@@ -268,9 +282,7 @@ async function syncTelegramAlertsToStore() {
 
 async function fetchExternalAlerts() {
   try {
-    // If ALERT_LB_API_URL is provided (e.g. Cloudflare Worker), use it.
-    // Otherwise, it falls back to the default direct URL which likely 403s on datacenters.
-    const alertLbUrl = process.env.ALERT_LB_API_URL || 'https://alert-lb.com/api/alerts';
+    const alertLbUrl = getAlertLbApiUrl();
     const response = await fetch(alertLbUrl, {
       headers: {
         accept: 'application/json, text/plain, */*',

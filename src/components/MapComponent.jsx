@@ -1,8 +1,10 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { Circle, MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import { Circle, GeoJSON, MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import { Share2, Copy, ExternalLink, Check } from 'lucide-react';
 import L from 'leaflet';
+import { feature as topojsonFeature } from 'topojson-client';
 import 'leaflet/dist/leaflet.css';
+import lebanonLevel2 from '../data/lebanon-level2.json';
 
 const MAP_TRANSLATIONS = {
   en: {
@@ -68,6 +70,8 @@ const DEFAULT_ZOOM = 9;
 const MIN_ZOOM = 8;
 const MAX_ZOOM = 18;
 const FOCUSED_ZOOM = 11;
+const LEBANON_VIEW_BOUNDS = [[33.02, 35.05], [34.72, 36.68]];
+const LEBANON_LEVEL2_OBJECT = 'gadm36_LBN_2';
 
 const LEBANON_BOUNDS = { minLng: 35.0, maxLng: 36.7, minLat: 33.0, maxLat: 34.8 };
 function isInLebanon(lng, lat) {
@@ -525,6 +529,16 @@ function MapEvents({ events, focusedEvent, locale }) {
 function MapPanes() {
   const map = useMap();
   useEffect(() => {
+    if (!map.getPane('countryFillPane')) {
+      const pane = map.createPane('countryFillPane');
+      pane.style.zIndex = 240;
+      pane.style.pointerEvents = 'none';
+    }
+    if (!map.getPane('countryBoundaryPane')) {
+      const pane = map.createPane('countryBoundaryPane');
+      pane.style.zIndex = 430;
+      pane.style.pointerEvents = 'none';
+    }
     if (!map.getPane('labelPane')) {
       const pane = map.createPane('labelPane');
       pane.style.zIndex = 450;
@@ -724,12 +738,90 @@ function useMapDarkMode() {
   return isDarkMode;
 }
 
+function getMapModeOverride() {
+  if (typeof window === 'undefined') return 'lebanon';
+  const urlMode = new URLSearchParams(window.location.search).get('mapMode');
+  const storedMode = window.localStorage?.getItem('mapMode');
+  const mode = urlMode || storedMode;
+  return mode === 'tiles' || mode === 'default' ? 'tiles' : 'lebanon';
+}
+
+function getLebanonDistrictGeoJson() {
+  const object = lebanonLevel2?.objects?.[LEBANON_LEVEL2_OBJECT];
+  if (!object) return { type: 'FeatureCollection', features: [] };
+  return topojsonFeature(lebanonLevel2, object);
+}
+
+function LebanonOnlyOverlay({ isDarkMode }) {
+  const districtGeoJson = useMemo(getLebanonDistrictGeoJson, []);
+  if (!districtGeoJson.features?.length) return null;
+
+  return (
+    <>
+      <GeoJSON
+        data={districtGeoJson}
+        pane="countryFillPane"
+        interactive={false}
+        style={{
+          color: 'transparent',
+          fillColor: isDarkMode ? '#05070b' : '#f8fafc',
+          fillOpacity: isDarkMode ? 0.74 : 0.82,
+          weight: 0,
+        }}
+      />
+      <GeoJSON
+        data={districtGeoJson}
+        pane="countryBoundaryPane"
+        interactive={false}
+        style={{
+          color: isDarkMode ? 'rgba(248, 250, 252, 0.28)' : 'rgba(15, 23, 42, 0.28)',
+          fillColor: 'transparent',
+          fillOpacity: 0,
+          weight: 1.15,
+        }}
+      />
+    </>
+  );
+}
+
 export default function MapComponent({ events = [], focusedEvent = null, locale = 'ar', activeType = 'all', activeWindow = '24h', replayTime = null, replayStartTime = null }) {
   const isDarkMode = useMapDarkMode();
+  const isLebanonOnlyMode = getMapModeOverride() === 'lebanon';
   const mapRef = React.useRef(null);
+  const surfaceRef = React.useRef(null);
   const baseTileUrl = isDarkMode
     ? 'https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png'
     : 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png';
+  useEffect(() => {
+    if (!isLebanonOnlyMode) return undefined;
+
+    const surface = surfaceRef.current;
+    if (!surface) return undefined;
+
+    let frameId = 0;
+    const updatePointerGlow = (event) => {
+      if (frameId) cancelAnimationFrame(frameId);
+      frameId = requestAnimationFrame(() => {
+        surface.style.setProperty('--cursor-x', `${event.clientX}px`);
+        surface.style.setProperty('--cursor-y', `${event.clientY}px`);
+        surface.style.setProperty('--cursor-opacity', '1');
+      });
+    };
+    const hidePointerGlow = () => {
+      surface.style.setProperty('--cursor-opacity', '0');
+    };
+
+    window.addEventListener('pointermove', updatePointerGlow, { passive: true });
+    window.addEventListener('pointerleave', hidePointerGlow);
+    window.addEventListener('blur', hidePointerGlow);
+
+    return () => {
+      if (frameId) cancelAnimationFrame(frameId);
+      window.removeEventListener('pointermove', updatePointerGlow);
+      window.removeEventListener('pointerleave', hidePointerGlow);
+      window.removeEventListener('blur', hidePointerGlow);
+    };
+  }, [isLebanonOnlyMode]);
   useEffect(() => {
     const handleTimelineZoom = (event) => {
       const delta = Number(event.detail?.delta || 0);
@@ -751,17 +843,97 @@ export default function MapComponent({ events = [], focusedEvent = null, locale 
     });
   }, [events, activeType, activeWindow, replayTime, replayStartTime]);
   return (
-    <div className={`relative flex-1 w-full overflow-hidden min-h-[400px] ${isDarkMode ? 'bg-[#0a0a0a]' : 'bg-[#f8fafc]'}`}>
+    <div ref={surfaceRef} className={`relative flex-1 w-full overflow-hidden min-h-[400px] ${isLebanonOnlyMode ? 'lebanon-only-surface' : isDarkMode ? 'bg-[#0a0a0a]' : 'bg-[#f8fafc]'}`}>
       <div className={`absolute inset-0 ${isDarkMode ? 'leaflet-dark-wrapper' : 'leaflet-light-wrapper'}`} dir="ltr">
-        <MapContainer center={DEFAULT_CENTER} zoom={DEFAULT_ZOOM} zoomControl={false} className="h-full w-full" minZoom={MIN_ZOOM} maxZoom={MAX_ZOOM} ref={mapRef}>
+        <MapContainer
+          center={DEFAULT_CENTER}
+          zoom={DEFAULT_ZOOM}
+          zoomControl={false}
+          className={`h-full w-full ${isLebanonOnlyMode ? 'lebanon-only-map' : ''}`}
+          minZoom={MIN_ZOOM}
+          maxZoom={MAX_ZOOM}
+          maxBounds={isLebanonOnlyMode ? LEBANON_VIEW_BOUNDS : undefined}
+          maxBoundsViscosity={isLebanonOnlyMode ? 0.95 : undefined}
+          ref={mapRef}
+        >
           <MapPanes />
-          <TileLayer key={`base-${isDarkMode ? 'dark' : 'light'}`} attribution='&copy; CartoDB' url={baseTileUrl} subdomains={['a', 'b', 'c', 'd']} />
+          {isLebanonOnlyMode ? null : (
+            <TileLayer key={`base-${isDarkMode ? 'dark' : 'light'}`} attribution='&copy; CartoDB' url={baseTileUrl} subdomains={['a', 'b', 'c', 'd']} />
+          )}
+          {isLebanonOnlyMode ? <LebanonOnlyOverlay isDarkMode={isDarkMode} /> : null}
           <PlaceLabels locale={locale} isDarkMode={isDarkMode} />
           <MapEvents events={filteredEvents} focusedEvent={focusedEvent} locale={locale} />
         </MapContainer>
       </div>
       <style>{`
         .leaflet-container { background: #1a1a1a !important; }
+        .lebanon-only-surface {
+          --cursor-x: 50vw;
+          --cursor-y: 50vh;
+          --cursor-opacity: 0;
+          isolation: isolate;
+          background:
+            radial-gradient(circle at 9% 92%, rgba(43, 72, 150, 0.18), transparent 0 18%),
+            radial-gradient(circle at 8% 96%, rgba(23, 42, 96, 0.12), transparent 0 12%),
+            radial-gradient(circle, rgba(255, 255, 255, 0.08) 0.8px, transparent 0.9px),
+            linear-gradient(180deg, rgba(20, 20, 20, 0.995), rgba(18, 18, 18, 1)),
+            #121212;
+          background-size: auto, auto, 11px 11px, auto;
+          background-attachment: fixed;
+        }
+        .lebanon-only-surface::before,
+        .lebanon-only-surface::after {
+          content: '';
+          position: fixed;
+          inset: 0;
+          pointer-events: none;
+          z-index: 0;
+        }
+        .lebanon-only-surface::before {
+          background:
+            radial-gradient(circle at 9% 92%, rgba(47, 86, 170, 0.1), transparent 0 17%),
+            linear-gradient(180deg, rgba(255, 255, 255, 0.012), transparent 14%);
+        }
+        .lebanon-only-surface::after {
+          opacity: var(--cursor-opacity);
+          background: radial-gradient(circle, rgba(255, 255, 255, 0.65) 1px, transparent 1.1px);
+          background-size: 11px 11px;
+          background-attachment: fixed;
+          -webkit-mask-image: radial-gradient(
+            80px circle at var(--cursor-x) var(--cursor-y),
+            black 0%,
+            transparent 100%
+          );
+          mask-image: radial-gradient(
+            80px circle at var(--cursor-x) var(--cursor-y),
+            black 0%,
+            transparent 100%
+          );
+          transition: opacity 160ms ease;
+        }
+        .lebanon-only-surface > .leaflet-dark-wrapper,
+        .lebanon-only-surface > .leaflet-light-wrapper {
+          z-index: 1;
+        }
+        .lebanon-only-map.leaflet-container {
+          background: transparent !important;
+        }
+        @media (pointer: coarse) {
+          .lebanon-only-surface::after {
+            display: block;
+            opacity: 1 !important;
+            background: radial-gradient(circle, rgba(255, 255, 255, 0.5) 1px, transparent 1.1px);
+            background-size: 11px 11px;
+            background-attachment: fixed;
+            -webkit-mask-image: linear-gradient(135deg, transparent 42%, black 50%, transparent 58%);
+            mask-image: linear-gradient(135deg, transparent 42%, black 50%, transparent 58%);
+            -webkit-mask-size: 300% 300%;
+            mask-size: 300% 300%;
+            -webkit-mask-repeat: no-repeat;
+            mask-repeat: no-repeat;
+            animation: sweepLine 6s infinite linear;
+          }
+        }
         .leaflet-popup-content-wrapper { background: rgba(12, 12, 12, 0.95) !important; border: 1px solid rgba(255, 255, 255, 0.1) !important; border-radius: 12px !important; color: white !important; padding: 0 !important; max-width: 280px !important; }
         .leaflet-popup-content { margin: 0 !important; width: auto !important; max-height: 300px; overflow-y: auto; }
         .leaflet-popup-tip { background: rgba(15, 15, 15, 0.9) !important; }

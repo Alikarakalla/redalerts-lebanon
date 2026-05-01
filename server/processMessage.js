@@ -519,6 +519,79 @@ function extractTelegramLocations(text) {
   return uniqueLocations([fallbackLocation]);
 }
 
+function normalizeTelegramLine(line) {
+  return String(line || '')
+    .replace(/^[-•*]+\s*/u, '')
+    .replace(/^[🚨⚠️⭕️🔴]+\s*/u, '')
+    .trim();
+}
+
+function isTelegramBoilerplate(line) {
+  const normalized = normalizeArabicText(line);
+  return (
+    !line ||
+    /^https?:\/\/\S+/iu.test(line) ||
+    normalized.includes('whatsapp.com/channel') ||
+    normalized.includes('قناة موقع بنت جبيل على واتساب') ||
+    /^[-ـ]{4,}$/u.test(line)
+  );
+}
+
+function extractEventClauses(text) {
+  const lines = String(text || '')
+    .split(/\r?\n+/u)
+    .map((line) => normalizeTelegramLine(line))
+    .filter((line) => line && !isTelegramBoilerplate(line));
+
+  const clauses = [];
+
+  for (const line of lines) {
+    const parts = line
+      .split(/\s+-\s*|(?<!\S)-(?=\S)/u)
+      .map((part) => normalizeTelegramLine(part))
+      .filter(Boolean);
+
+    if (parts.length === 0) {
+      continue;
+    }
+
+    for (const part of parts) {
+      if (hasStrongAlertSignal(part) || isConflictEvent(part)) {
+        clauses.push(part);
+      }
+    }
+  }
+
+  return clauses;
+}
+
+function getClauseAlertBlueprints(text) {
+  const clauses = extractEventClauses(text);
+  const blueprints = [];
+
+  for (const clause of clauses) {
+    const type = inferType(clause);
+    if (!type || type === 'update') {
+      continue;
+    }
+
+    const locations = extractTelegramLocations(clause);
+    for (const location of locations) {
+      blueprints.push({
+        clause,
+        location,
+        forcedType: {
+          type,
+          severity: severityFromText(clause),
+          confidence: 0.72,
+        },
+      });
+    }
+  }
+
+  return blueprints;
+}
+
 async function buildAlertForLocation(text, sourceChannel, location, forcedType) {
   const coords = await resolveCoordinates(location);
   const severity = forcedType?.severity || severityFromText(text);
@@ -545,6 +618,35 @@ async function buildAlertForLocation(text, sourceChannel, location, forcedType) 
 }
 
 async function buildTelegramAlert(text, sourceChannel, analysis = null) {
+  const clauseBlueprints = getClauseAlertBlueprints(text);
+
+  if (clauseBlueprints.length > 1) {
+    const alerts = [];
+    const seen = new Set();
+
+    for (const blueprint of clauseBlueprints) {
+      const identity = `${blueprint.forcedType.type}|${locationIdentity(blueprint.location)}`;
+      if (seen.has(identity)) {
+        continue;
+      }
+
+      seen.add(identity);
+      alerts.push(
+        await buildAlertForLocation(
+          blueprint.clause,
+          sourceChannel,
+          blueprint.location,
+          blueprint.forcedType
+        )
+      );
+    }
+
+    return {
+      isConflictEvent: true,
+      alerts,
+    };
+  }
+
   const alerts = [];
   const locations = uniqueLocations([
     ...extractTelegramLocations(text),
@@ -579,14 +681,16 @@ export async function processMessage(text, sourceChannel) {
     }
   }
 
-  if (analysis && !analysis.shouldCreateAlert) {
+  const parsed = await buildTelegramAlert(text, sourceChannel, analysis);
+
+  if (analysis && !analysis.shouldCreateAlert && parsed.alerts.length === 0) {
     return {
       isConflictEvent: analysis.isConflictEvent,
       alerts: [],
     };
   }
 
-  return buildTelegramAlert(text, sourceChannel, analysis);
+  return parsed;
 }
 
 export function getMappableAlerts(processed) {

@@ -297,7 +297,9 @@ async function fetchExternalAlerts() {
   });
   if (!response.ok) {
     const body = await response.text().catch(() => '');
-    throw new Error(`Alert LB returned ${response.status}: ${body.slice(0, 180)}`);
+    const error = new Error(`Alert LB returned ${response.status}: ${body.slice(0, 180)}`);
+    error.status = response.status;
+    throw error;
   }
 
   const json = await response.json();
@@ -315,8 +317,10 @@ async function fetchExternalAlerts() {
 }
 
 const CACHE_TTL_MS = 90_000;
+const EXTERNAL_ALERTS_TTL_MS = 90_000;
+const EXTERNAL_ALERTS_429_BACKOFF_MS = 5 * 60 * 1000;
 let alertsCache = { data: null, fetchedAt: 0, refreshing: false };
-let externalAlertsCache = { data: [], fetchedAt: 0 };
+let externalAlertsCache = { data: [], fetchedAt: 0, retryAfter: 0 };
 const WARPLANE_TTL_MS = 20 * 60 * 1000;
 const STREAM_POLL_INTERVAL_MS = 5_000;
 const streamClients = new Set();
@@ -422,6 +426,12 @@ function filterExpiredWarplanes(alerts, now = Date.now()) {
 }
 
 async function refreshAlertsCache() {
+  const now = Date.now();
+
+  if (alertsCache.data && now - alertsCache.fetchedAt < CACHE_TTL_MS) {
+    return;
+  }
+
   if (alertsCache.refreshing) {
     return;
   }
@@ -429,7 +439,6 @@ async function refreshAlertsCache() {
   alertsCache.refreshing = true;
 
   try {
-    const now = Date.now();
     let syncResult = { alerts: [], inserted: 0 };
     if (TELEGRAM_CHANNELS_ENABLED) {
       try {
@@ -439,20 +448,35 @@ async function refreshAlertsCache() {
       }
     }
 
-    let externalAlerts = [];
-    try {
-      externalAlerts = filterActiveAlerts(filterExpiredWarplanes(await fetchExternalAlerts(), now));
-      externalAlertsCache = {
-        data: externalAlerts,
-        fetchedAt: now,
-      };
-    } catch (error) {
-      console.error(`[external] ${error.message}`);
-      externalAlerts = [];
-      externalAlertsCache = {
-        data: [],
-        fetchedAt: now,
-      };
+    let externalAlerts = filterActiveAlerts(filterExpiredWarplanes(externalAlertsCache.data || [], now));
+    const externalCacheFresh = externalAlertsCache.fetchedAt > 0
+      && now - externalAlertsCache.fetchedAt < EXTERNAL_ALERTS_TTL_MS;
+    const inBackoffWindow = externalAlertsCache.retryAfter > now;
+
+    if (externalCacheFresh) {
+      // Avoid refetching upstream data while the local cache is still fresh.
+      externalAlerts = filterActiveAlerts(filterExpiredWarplanes(externalAlertsCache.data || [], now));
+    } else if (inBackoffWindow) {
+      console.warn(
+        `[external] backing off until ${new Date(externalAlertsCache.retryAfter).toISOString()} after upstream rate limiting`
+      );
+    } else {
+      try {
+        externalAlerts = filterActiveAlerts(filterExpiredWarplanes(await fetchExternalAlerts(), now));
+        externalAlertsCache = {
+          data: externalAlerts,
+          fetchedAt: now,
+          retryAfter: 0,
+        };
+      } catch (error) {
+        console.error(`[external] ${error.message}`);
+        externalAlerts = filterActiveAlerts(filterExpiredWarplanes(externalAlertsCache.data || [], now));
+        externalAlertsCache = {
+          data: externalAlerts,
+          fetchedAt: externalAlertsCache.fetchedAt,
+          retryAfter: error.status === 429 ? now + EXTERNAL_ALERTS_429_BACKOFF_MS : 0,
+        };
+      }
     }
     
     const windowStart = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
@@ -567,15 +591,17 @@ app.get('/api/alert-lb', async (_req, res) => {
     externalAlertsCache = {
       data: filterActiveAlerts(filterExpiredWarplanes(alerts)),
       fetchedAt: Date.now(),
+      retryAfter: 0,
     };
     res.json({ alerts, source: 'alert-lb' });
   } catch (error) {
     console.error('Failed to fetch Alert LB alerts:', error.message);
     externalAlertsCache = {
-      data: [],
-      fetchedAt: Date.now(),
+      data: filterActiveAlerts(filterExpiredWarplanes(externalAlertsCache.data || [])),
+      fetchedAt: externalAlertsCache.fetchedAt,
+      retryAfter: error.status === 429 ? Date.now() + EXTERNAL_ALERTS_429_BACKOFF_MS : 0,
     };
-    res.json({ alerts: [], source: 'alert-lb', stale: true });
+    res.json({ alerts: externalAlertsCache.data, source: 'alert-lb', stale: true });
   }
 });
 

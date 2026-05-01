@@ -300,19 +300,33 @@ function playAlertTone() {
 
     const audioContext = new AudioContextCtor();
     const oscillator = audioContext.createOscillator();
+    const lfo = audioContext.createOscillator();
+    const lfoGain = audioContext.createGain();
     const gain = audioContext.createGain();
 
-    oscillator.type = 'sine';
-    oscillator.frequency.setValueAtTime(880, audioContext.currentTime);
-    oscillator.frequency.exponentialRampToValueAtTime(660, audioContext.currentTime + 0.18);
-    gain.gain.setValueAtTime(0.0001, audioContext.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.06, audioContext.currentTime + 0.02);
-    gain.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + 0.22);
+    const startAt = audioContext.currentTime;
+    const stopAt = startAt + 2.4;
 
+    oscillator.type = 'sawtooth';
+    oscillator.frequency.setValueAtTime(720, startAt);
+
+    lfo.type = 'sine';
+    lfo.frequency.setValueAtTime(1.8, startAt);
+    lfoGain.gain.setValueAtTime(180, startAt);
+
+    gain.gain.setValueAtTime(0.0001, audioContext.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.085, startAt + 0.05);
+    gain.gain.setValueAtTime(0.085, stopAt - 0.18);
+    gain.gain.exponentialRampToValueAtTime(0.0001, stopAt);
+
+    lfo.connect(lfoGain);
+    lfoGain.connect(oscillator.frequency);
     oscillator.connect(gain);
     gain.connect(audioContext.destination);
     oscillator.start();
-    oscillator.stop(audioContext.currentTime + 0.24);
+    lfo.start();
+    oscillator.stop(stopAt);
+    lfo.stop(stopAt);
     oscillator.onended = () => audioContext.close().catch(() => {});
   } catch (_error) {
     // Browsers may block audio until the user interacts with the page.
@@ -1818,6 +1832,7 @@ function App() {
     }
 
     const nextToast = buildIncomingAlertToast(incomingAlert, locale);
+    setFocusedEvent(incomingAlert);
     setWarningToastState((current) => ({
       open: true,
       key: current.key + 1,

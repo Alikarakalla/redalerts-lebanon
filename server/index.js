@@ -384,12 +384,12 @@ async function fetchExternalAlerts() {
 
 const CACHE_TTL_MS = 90_000;
 const EXTERNAL_ALERTS_TTL_MS = 90_000;
-const EXTERNAL_ALERTS_STREAM_TTL_MS = 15_000;
+const EXTERNAL_ALERTS_STREAM_TTL_MS = 60_000;
 const EXTERNAL_ALERTS_429_BACKOFF_MS = 5 * 60 * 1000;
 let alertsCache = { data: null, fetchedAt: 0, refreshing: false };
-let externalAlertsCache = { data: [], fetchedAt: 0, retryAfter: 0 };
+let externalAlertsCache = { data: [], fetchedAt: 0, retryAfter: 0, backoffLoggedAt: 0 };
 const WARPLANE_TTL_MS = 20 * 60 * 1000;
-const STREAM_POLL_INTERVAL_MS = 5_000;
+const STREAM_POLL_INTERVAL_MS = 15_000;
 const streamClients = new Set();
 let streamPollTimer = null;
 let streamSnapshot = new Map();
@@ -526,9 +526,12 @@ async function refreshAlertsCache(options = {}) {
       // Avoid refetching upstream data while the local cache is still fresh.
       externalAlerts = filterActiveAlerts(filterExpiredWarplanes(externalAlertsCache.data || [], now));
     } else if (inBackoffWindow) {
-      console.warn(
-        `[external] backing off until ${new Date(externalAlertsCache.retryAfter).toISOString()} after upstream rate limiting`
-      );
+      if (!externalAlertsCache.backoffLoggedAt || now - externalAlertsCache.backoffLoggedAt > 60_000) {
+        console.warn(
+          `[external] backing off until ${new Date(externalAlertsCache.retryAfter).toISOString()} after upstream rate limiting`
+        );
+        externalAlertsCache.backoffLoggedAt = now;
+      }
     } else {
       try {
         externalAlerts = filterActiveAlerts(filterExpiredWarplanes(await fetchExternalAlerts(), now));
@@ -536,14 +539,16 @@ async function refreshAlertsCache(options = {}) {
           data: externalAlerts,
           fetchedAt: now,
           retryAfter: 0,
+          backoffLoggedAt: 0,
         };
       } catch (error) {
         console.error(`[external] ${error.message}`);
         externalAlerts = filterActiveAlerts(filterExpiredWarplanes(externalAlertsCache.data || [], now));
         externalAlertsCache = {
           data: externalAlerts,
-          fetchedAt: externalAlertsCache.fetchedAt,
+          fetchedAt: now,
           retryAfter: error.status === 429 ? now + EXTERNAL_ALERTS_429_BACKOFF_MS : 0,
+          backoffLoggedAt: 0,
         };
       }
     }
@@ -660,14 +665,16 @@ app.get('/api/alert-lb', async (_req, res) => {
       data: filterActiveAlerts(filterExpiredWarplanes(alerts)),
       fetchedAt: Date.now(),
       retryAfter: 0,
+      backoffLoggedAt: 0,
     };
     res.json({ alerts, source: 'alert-lb' });
   } catch (error) {
     console.error('Failed to fetch Alert LB alerts:', error.message);
     externalAlertsCache = {
       data: filterActiveAlerts(filterExpiredWarplanes(externalAlertsCache.data || [])),
-      fetchedAt: externalAlertsCache.fetchedAt,
+      fetchedAt: Date.now(),
       retryAfter: error.status === 429 ? Date.now() + EXTERNAL_ALERTS_429_BACKOFF_MS : 0,
+      backoffLoggedAt: 0,
     };
     res.json({ alerts: externalAlertsCache.data, source: 'alert-lb', stale: true });
   }

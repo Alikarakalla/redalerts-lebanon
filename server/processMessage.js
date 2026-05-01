@@ -81,6 +81,17 @@ const LOCATION_BLOCKLIST_PREFIXES = [
   '\u0627\u0644\u0645\u0633\u0624\u0648\u0644',
 ];
 
+const LOCATION_BLOCKLIST_EXACT = new Set([
+  '\u0627\u0644\u0646\u0647\u0631',
+  '\u0645\u062c\u0631\u0649 \u0627\u0644\u0646\u0647\u0631',
+  '\u0645\u062c\u0631\u0649',
+  '\u0645\u062d\u0648\u0631',
+  '\u0627\u0644\u0645\u062d\u0648\u0631',
+  '\u0637\u0631\u064a\u0642',
+  '\u0627\u0644\u0637\u0631\u064a\u0642',
+  '\u0648\u0635\u0648\u0644\u0627 \u0627\u0644\u0649 \u0645\u062c\u0631\u0649 \u0627\u0644\u0646\u0647\u0631',
+].map((value) => normalizeArabicText(value)));
+
 const NON_ALERT_ARABIC_HINTS = [
   '\u0627\u0644\u0631\u0626\u064a\u0633',
   '\u0648\u0632\u064a\u0631',
@@ -277,6 +288,54 @@ function inferType(text) {
   return 'update';
 }
 
+function inferTypes(text) {
+  const normalized = normalizeArabicText(text);
+  const types = [];
+  const vehicleAttack = hasVehicleMention(text) && hasVehicleAttackSignal(text);
+
+  if (hasExplicitWarningSignal(text)) {
+    types.push('warning');
+  }
+
+  if (vehicleAttack) {
+    types.push('carAttack');
+  }
+
+  if (
+    includesArabic(text, ARABIC.explosion) ||
+    includesArabic(text, ARABIC.blast) ||
+    includesArabic(text, ARABIC.demolition) ||
+    normalized.includes('demolition')
+  ) {
+    types.push('explosion');
+  }
+
+  if (includesArabic(text, ARABIC.missileFall) || normalized.includes('missile')) {
+    types.push('missile');
+  }
+
+  if (
+    includesArabic(text, ARABIC.raid) ||
+    includesArabic(text, ARABIC.raids) ||
+    normalized.includes('airstrike') ||
+    normalized.includes('strike') ||
+    normalized.includes('raid') ||
+    normalized.includes('targeted')
+  ) {
+    types.push('airstrike');
+  }
+
+  if (
+    includesArabic(text, ARABIC.shelling) ||
+    normalized.includes('artillery') ||
+    normalized.includes('shell')
+  ) {
+    types.push('artillery');
+  }
+
+  return [...new Set(types)].filter((type) => type !== 'update');
+}
+
 function severityFromText(text) {
   const normalized = normalizeArabicText(text);
   const vehicleAttack = hasVehicleMention(text) && hasVehicleAttackSignal(text);
@@ -420,6 +479,10 @@ function isBlockedLocation(location) {
     return true;
   }
 
+  if (LOCATION_BLOCKLIST_EXACT.has(normalizeArabicText(location))) {
+    return true;
+  }
+
   return LOCATION_BLOCKLIST_PREFIXES.some(
     (prefix) => location === prefix || location.startsWith(`${prefix} `)
   );
@@ -523,6 +586,7 @@ function normalizeTelegramLine(line) {
   return String(line || '')
     .replace(/^[-•*]+\s*/u, '')
     .replace(/^[🚨⚠️⭕️🔴]+\s*/u, '')
+    .replace(/\s+/gu, ' ')
     .trim();
 }
 
@@ -537,8 +601,72 @@ function isTelegramBoilerplate(line) {
   );
 }
 
+function isArabicHeavyText(text) {
+  const matches = String(text || '').match(/[\u0600-\u06FF]/gu);
+  return Array.isArray(matches) && matches.length >= 3;
+}
+
+function isEnglishTranslationLine(line) {
+  if (!line) {
+    return false;
+  }
+
+  if (isArabicHeavyText(line)) {
+    return false;
+  }
+
+  return /[A-Za-z]/u.test(line);
+}
+
+function sanitizeTelegramMessage(text) {
+  const rawLines = String(text || '')
+    .split(/\r?\n/u)
+    .map((line) => line.trim());
+  const segments = [];
+  let currentSegment = [];
+
+  for (const line of rawLines) {
+    if (/^[—–-]{1,3}$/u.test(line)) {
+      if (currentSegment.length > 0) {
+        segments.push(currentSegment);
+        currentSegment = [];
+      }
+      continue;
+    }
+
+    currentSegment.push(line);
+  }
+
+  if (currentSegment.length > 0) {
+    segments.push(currentSegment);
+  }
+
+  const preferredSegment = segments.find((segment) => segment.some((line) => isArabicHeavyText(line))) || segments[0] || [];
+  const meaningfulLines = preferredSegment.filter((line) => line && !isTelegramBoilerplate(line));
+  if (meaningfulLines.length === 0) {
+    return '';
+  }
+
+  const hasArabic = meaningfulLines.some((line) => isArabicHeavyText(line));
+  const sanitized = [];
+
+  for (const line of meaningfulLines) {
+    if (/^[—–-]{1,3}$/u.test(line)) {
+      continue;
+    }
+
+    if (hasArabic && isEnglishTranslationLine(line)) {
+      continue;
+    }
+
+    sanitized.push(normalizeTelegramLine(line));
+  }
+
+  return sanitized.filter(Boolean).join('\n');
+}
+
 function extractEventClauses(text) {
-  const lines = String(text || '')
+  const lines = sanitizeTelegramMessage(text)
     .split(/\r?\n+/u)
     .map((line) => normalizeTelegramLine(line))
     .filter((line) => line && !isTelegramBoilerplate(line));
@@ -570,22 +698,24 @@ function getClauseAlertBlueprints(text) {
   const blueprints = [];
 
   for (const clause of clauses) {
-    const type = inferType(clause);
-    if (!type || type === 'update') {
+    const types = inferTypes(clause);
+    if (types.length === 0) {
       continue;
     }
 
     const locations = extractTelegramLocations(clause);
-    for (const location of locations) {
-      blueprints.push({
-        clause,
-        location,
-        forcedType: {
-          type,
-          severity: severityFromText(clause),
-          confidence: 0.72,
-        },
-      });
+    for (const type of types) {
+      for (const location of locations) {
+        blueprints.push({
+          clause,
+          location,
+          forcedType: {
+            type,
+            severity: severityFromText(clause),
+            confidence: 0.72,
+          },
+        });
+      }
     }
   }
 
@@ -671,17 +801,18 @@ async function buildTelegramAlert(text, sourceChannel, analysis = null) {
 }
 
 export async function processMessage(text, sourceChannel) {
+  const sanitizedText = sanitizeTelegramMessage(text);
   let analysis = null;
 
-  if (shouldUseOpenAiClassification(text)) {
+  if (shouldUseOpenAiClassification(sanitizedText)) {
     try {
-      analysis = await classifyTelegramMessage(text, sourceChannel);
+      analysis = await classifyTelegramMessage(sanitizedText, sourceChannel);
     } catch (error) {
       console.warn('[openai] message classification failed:', error.message);
     }
   }
 
-  const parsed = await buildTelegramAlert(text, sourceChannel, analysis);
+  const parsed = await buildTelegramAlert(sanitizedText, sourceChannel, analysis);
 
   if (analysis && !analysis.shouldCreateAlert && parsed.alerts.length === 0) {
     return {

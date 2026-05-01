@@ -133,7 +133,7 @@ export async function classifyTelegramMessage(text, sourceChannel) {
       body: JSON.stringify({
         model: config.openAiModel,
         instructions:
-          'Classify Telegram posts from Lebanon conflict channels. Only mark should_create_alert true for actionable attack or warning events affecting Lebanon. Prefer airstrike for raid or strike language from aircraft or drones. Ignore commentary, politics, repost chatter, aftermath-only updates without a new strike, and vague military analysis.',
+          'Classify Telegram posts from Lebanon conflict channels. Only mark should_create_alert true for actionable attack or warning events affecting Lebanon. Prefer airstrike for raid or strike language from aircraft or drones. Ignore commentary, politics, repost chatter, aftermath-only updates without a new strike, and vague military analysis. Ignore channel footer/promotional lines such as WhatsApp channel invites. If a post contains Arabic followed by an English translation of the same content, use the Arabic content only and do not duplicate locations. Return only real Lebanese place names, never generic terrain or direction words such as river, riverbed, road, axis, border, valley, vicinity, or neighborhood unless they are part of a known proper place name. If a message mentions mixed event types, choose the dominant actionable type only; do not broaden locations from one clause into another.',
         input: [
           {
             role: 'user',

@@ -750,7 +750,7 @@ async function buildAlertForLocation(text, sourceChannel, location, forcedType) 
 async function buildTelegramAlert(text, sourceChannel, analysis = null) {
   const clauseBlueprints = getClauseAlertBlueprints(text);
 
-  if (clauseBlueprints.length > 1) {
+  if (clauseBlueprints.length > 0) {
     const alerts = [];
     const seen = new Set();
 

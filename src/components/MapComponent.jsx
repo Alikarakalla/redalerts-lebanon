@@ -415,13 +415,142 @@ const eventIcon = (type, color, opacity, count, radius, isFresh, zoomLevel, cove
     });
   }
 
+  if (type === 'airstrike') {
+    const size = isZoomedOut ? 14 : 50;
+    const html = `
+      <div class="event-marker event-marker--airstrike ${isZoomedOut ? 'event-marker--zoomed-out' : ''}" style="--event-color:${color};width:${size}px;height:${size}px;">
+        <div class="event-marker__airstrike-shell">
+          ${isZoomedOut ? '' : `
+            <div class="event-marker__airstrike-shockwave"></div>
+            <div class="event-marker__airstrike-shockwave"></div>
+            <div class="event-marker__airstrike-shockwave"></div>
+            <div class="event-marker__airstrike-base-circle"></div>
+            <div class="event-marker__airstrike-target-ring"></div>
+          `}
+          <div class="event-marker__airstrike-jet">
+            <div class="event-marker__airstrike-jet-tail"></div>
+            <div class="event-marker__airstrike-jet-wing event-marker__airstrike-jet-wing--left"></div>
+            <div class="event-marker__airstrike-jet-wing event-marker__airstrike-jet-wing--right"></div>
+            <div class="event-marker__airstrike-jet-body"></div>
+          </div>
+          ${isZoomedOut ? '' : '<div class="event-marker__airstrike-impact-dot"></div>'}
+        </div>
+      </div>
+    `;
+
+    return L.divIcon({
+      html,
+      className: 'custom-leaflet-marker custom-leaflet-marker--event',
+      iconSize: [size, size],
+      iconAnchor: [size / 2, size / 2],
+    });
+  }
+
+  if (type === 'explosion') {
+    const size = isZoomedOut ? 14 : 44;
+    const html = `
+      <div class="event-marker event-marker--explosion ${isZoomedOut ? 'event-marker--zoomed-out' : ''}" style="--event-color:${color};width:${size}px;height:${size}px;">
+        <div class="event-marker__explosion-shell">
+          ${isZoomedOut ? '' : `
+            <div class="event-marker__explosion-pulse-ring event-marker__explosion-pulse-ring--outer"></div>
+            <div class="event-marker__explosion-pulse-ring"></div>
+            <div class="event-marker__explosion-circle"></div>
+          `}
+          <div class="event-marker__explosion-burst">
+            <div class="event-marker__explosion-spike event-marker__explosion-spike--1"></div>
+            <div class="event-marker__explosion-spike event-marker__explosion-spike--2"></div>
+            <div class="event-marker__explosion-spike event-marker__explosion-spike--3"></div>
+            <div class="event-marker__explosion-spike event-marker__explosion-spike--4"></div>
+            <div class="event-marker__explosion-spike event-marker__explosion-spike--5"></div>
+            <div class="event-marker__explosion-spike event-marker__explosion-spike--6"></div>
+            <div class="event-marker__explosion-spike event-marker__explosion-spike--7"></div>
+            <div class="event-marker__explosion-spike event-marker__explosion-spike--8"></div>
+          </div>
+          <div class="event-marker__explosion-center-dot"></div>
+        </div>
+      </div>
+    `;
+
+    return L.divIcon({
+      html,
+      className: 'custom-leaflet-marker custom-leaflet-marker--event',
+      iconSize: [size, size],
+      iconAnchor: [size / 2, size / 2],
+    });
+  }
+
+  if (type === 'artillery') {
+    const size = isZoomedOut ? 14 : 44;
+    const html = `
+      <div class="event-marker event-marker--artillery ${isZoomedOut ? 'event-marker--zoomed-out' : ''}" style="--event-color:${color};width:${size}px;height:${size}px;">
+        <div class="event-marker__artillery-shell">
+          ${isZoomedOut ? '' : `
+            <div class="event-marker__artillery-pulse-ring event-marker__artillery-pulse-ring--outer"></div>
+            <div class="event-marker__artillery-pulse-ring"></div>
+            <div class="event-marker__artillery-circle"></div>
+            <div class="event-marker__artillery-crosshair"></div>
+          `}
+          <div class="event-marker__artillery-cannon">
+            <div class="event-marker__artillery-barrel"></div>
+            <div class="event-marker__artillery-base"></div>
+            <div class="event-marker__artillery-wheel event-marker__artillery-wheel--left"></div>
+            <div class="event-marker__artillery-wheel event-marker__artillery-wheel--right"></div>
+          </div>
+          ${isZoomedOut ? '' : '<div class="event-marker__artillery-flash"></div>'}
+        </div>
+      </div>
+    `;
+
+    return L.divIcon({
+      html,
+      className: 'custom-leaflet-marker custom-leaflet-marker--event',
+      iconSize: [size, size],
+      iconAnchor: [size / 2, size / 2],
+    });
+  }
+
+  if (type === 'carAttack') {
+    const size = isZoomedOut ? 14 : 56;
+    const html = `
+      <div class="event-marker event-marker--car-attack ${isZoomedOut ? 'event-marker--zoomed-out' : ''}" style="--event-color:${color};width:${size}px;height:${size}px;">
+        <div class="event-marker__car-attack-shell">
+          ${isZoomedOut ? '' : `
+            <div class="event-marker__car-attack-wave"></div>
+            <div class="event-marker__car-attack-wave"></div>
+            <div class="event-marker__car-attack-base-circle"></div>
+            <div class="event-marker__car-attack-smoke event-marker__car-attack-smoke--1"></div>
+            <div class="event-marker__car-attack-smoke event-marker__car-attack-smoke--2"></div>
+            <div class="event-marker__car-attack-smoke event-marker__car-attack-smoke--3"></div>
+          `}
+          <div class="event-marker__car-attack-flames">
+            <div class="event-marker__car-attack-flame event-marker__car-attack-flame--1"></div>
+            <div class="event-marker__car-attack-flame event-marker__car-attack-flame--2"></div>
+            <div class="event-marker__car-attack-flame event-marker__car-attack-flame--3"></div>
+            <div class="event-marker__car-attack-flame event-marker__car-attack-flame--4"></div>
+          </div>
+          <div class="event-marker__car-attack-flame-core"></div>
+          <div class="event-marker__car-attack-car-group">
+            <div class="event-marker__car-attack-car-roof"></div>
+            <div class="event-marker__car-attack-car-window"></div>
+            <div class="event-marker__car-attack-car-body"></div>
+            <div class="event-marker__car-attack-car-wheel event-marker__car-attack-car-wheel--left"></div>
+            <div class="event-marker__car-attack-car-wheel event-marker__car-attack-car-wheel--right"></div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    return L.divIcon({
+      html,
+      className: 'custom-leaflet-marker custom-leaflet-marker--event',
+      iconSize: [size, size],
+      iconAnchor: [size / 2, size / 2],
+    });
+  }
+
   const size = 36;
   const iconSizeByType = {
-    carAttack: 18,
-    explosion: 18,
     warning: 18,
-    airstrike: 18,
-    artillery: 18,
     missile: 18,
     default: 18,
   };
@@ -1044,6 +1173,612 @@ export default function MapComponent({ events = [], focusedEvent = null, locale 
         .event-marker--warplane-squad {
           pointer-events: auto;
         }
+        .event-marker--airstrike {
+          pointer-events: auto;
+        }
+        .event-marker--explosion {
+          pointer-events: auto;
+        }
+        .event-marker--artillery {
+          pointer-events: auto;
+        }
+        .event-marker--car-attack {
+          pointer-events: auto;
+        }
+        .event-marker__airstrike-shell {
+          position: relative;
+          width: 50px;
+          height: 50px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          pointer-events: auto;
+        }
+        .event-marker--airstrike.event-marker--zoomed-out .event-marker__airstrike-shell {
+          width: 14px;
+          height: 14px;
+          transform: none;
+          transform-origin: center;
+        }
+        .event-marker--airstrike.event-marker--zoomed-out .event-marker__airstrike-jet {
+          width: 10px;
+          height: 10px;
+          animation: none;
+          filter: drop-shadow(0 0 4px color-mix(in srgb, var(--event-color, #d42b2b) 60%, transparent));
+        }
+        .event-marker--airstrike.event-marker--zoomed-out .event-marker__airstrike-jet-body {
+          width: 5px;
+          height: 8px;
+        }
+        .event-marker--airstrike.event-marker--zoomed-out .event-marker__airstrike-jet-wing {
+          width: 7px;
+          height: 3px;
+        }
+        .event-marker--airstrike.event-marker--zoomed-out .event-marker__airstrike-jet-wing--left {
+          top: 2px;
+          left: -3px;
+        }
+        .event-marker--airstrike.event-marker--zoomed-out .event-marker__airstrike-jet-wing--right {
+          top: 2px;
+          right: -3px;
+        }
+        .event-marker--airstrike.event-marker--zoomed-out .event-marker__airstrike-jet-tail {
+          width: 3px;
+          height: 2px;
+          top: 0;
+        }
+        .event-marker__airstrike-shockwave {
+          position: absolute;
+          width: 50px;
+          height: 50px;
+          border-radius: 50%;
+          border: 2px solid color-mix(in srgb, var(--event-color, #d42b2b) 50%, transparent);
+          animation: airstrikeShockwave 2s ease-out infinite;
+        }
+        .event-marker__airstrike-shockwave:nth-child(2) {
+          animation-delay: 0.55s;
+        }
+        .event-marker__airstrike-shockwave:nth-child(3) {
+          animation-delay: 1.1s;
+        }
+        .event-marker__airstrike-base-circle {
+          position: absolute;
+          width: 42px;
+          height: 42px;
+          border-radius: 50%;
+          border: 2.5px solid var(--event-color, #d42b2b);
+          background: color-mix(in srgb, var(--event-color, #d42b2b) 12%, transparent);
+          box-shadow:
+            0 0 0 1px color-mix(in srgb, var(--event-color, #d42b2b) 20%, transparent),
+            0 0 12px color-mix(in srgb, var(--event-color, #d42b2b) 22%, transparent);
+        }
+        .event-marker__airstrike-target-ring {
+          position: absolute;
+          width: 20px;
+          height: 20px;
+          border-radius: 50%;
+          border: 1.5px solid color-mix(in srgb, var(--event-color, #d42b2b) 60%, transparent);
+          animation: airstrikeTargetBlink 1.6s ease-in-out infinite;
+        }
+        .event-marker__airstrike-jet {
+          position: relative;
+          width: 22px;
+          height: 22px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: var(--event-color, #d42b2b);
+          animation: airstrikeJetDive 1.6s ease-in-out infinite;
+        }
+        .event-marker__airstrike-jet-body {
+          position: absolute;
+          width: 10px;
+          height: 16px;
+          background: currentColor;
+          clip-path: polygon(50% 100%, 0% 0%, 100% 0%);
+          filter: drop-shadow(0 0 3px color-mix(in srgb, var(--event-color, #d42b2b) 55%, transparent));
+        }
+        .event-marker__airstrike-jet-wing {
+          position: absolute;
+          width: 14px;
+          height: 5px;
+          background: currentColor;
+        }
+        .event-marker__airstrike-jet-wing--left {
+          clip-path: polygon(100% 0%, 0% 100%, 100% 100%);
+          top: 4px;
+          left: -6px;
+        }
+        .event-marker__airstrike-jet-wing--right {
+          clip-path: polygon(0% 0%, 100% 100%, 0% 100%);
+          top: 4px;
+          right: -6px;
+        }
+        .event-marker__airstrike-jet-tail {
+          position: absolute;
+          width: 6px;
+          height: 4px;
+          top: 0;
+          background: currentColor;
+          clip-path: polygon(50% 100%, 0% 0%, 100% 0%);
+          transform: scaleY(-1);
+        }
+        .event-marker__airstrike-impact-dot {
+          position: absolute;
+          width: 6px;
+          height: 6px;
+          border-radius: 50%;
+          bottom: 6px;
+          background: var(--event-color, #d42b2b);
+          box-shadow: 0 0 8px 3px color-mix(in srgb, var(--event-color, #d42b2b) 70%, transparent);
+          animation: airstrikeImpactFlash 1.6s ease-in-out infinite;
+        }
+        .event-marker__explosion-shell {
+          position: relative;
+          width: 44px;
+          height: 44px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          pointer-events: auto;
+        }
+        .event-marker--explosion.event-marker--zoomed-out .event-marker__explosion-shell {
+          width: 14px;
+          height: 14px;
+        }
+        .event-marker__explosion-pulse-ring {
+          position: absolute;
+          inset: -10px;
+          border-radius: 50%;
+          border: 2px solid color-mix(in srgb, var(--event-color, #e8502a) 40%, transparent);
+          animation: explosionPulseRing 1.8s ease-out infinite;
+        }
+        .event-marker__explosion-pulse-ring--outer {
+          inset: -18px;
+          border-color: color-mix(in srgb, var(--event-color, #e8502a) 20%, transparent);
+          animation-delay: 0.6s;
+        }
+        .event-marker__explosion-circle {
+          position: absolute;
+          inset: 0;
+          border-radius: 50%;
+          border: 2.5px solid var(--event-color, #e8502a);
+          background: color-mix(in srgb, var(--event-color, #e8502a) 15%, transparent);
+          box-shadow:
+            0 0 0 1px color-mix(in srgb, var(--event-color, #e8502a) 18%, transparent),
+            0 0 12px color-mix(in srgb, var(--event-color, #e8502a) 22%, transparent);
+        }
+        .event-marker__explosion-burst {
+          position: absolute;
+          inset: 0;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .event-marker__explosion-spike {
+          position: absolute;
+          width: 2.5px;
+          left: 50%;
+          top: 50%;
+          background: var(--event-color, #e8502a);
+          border-radius: 2px;
+          transform-origin: bottom center;
+          animation: explosionSpikeFlicker 1.8s ease-in-out infinite;
+          filter: drop-shadow(0 0 4px color-mix(in srgb, var(--event-color, #e8502a) 40%, transparent));
+        }
+        .event-marker__explosion-spike--1 { height: 14px; transform: translateX(-50%) translateY(-100%) rotate(0deg); animation-delay: 0s; }
+        .event-marker__explosion-spike--2 { height: 11px; transform: translateX(-50%) translateY(-100%) rotate(45deg); animation-delay: 0.1s; }
+        .event-marker__explosion-spike--3 { height: 14px; transform: translateX(-50%) translateY(-100%) rotate(90deg); animation-delay: 0.2s; }
+        .event-marker__explosion-spike--4 { height: 11px; transform: translateX(-50%) translateY(-100%) rotate(135deg); animation-delay: 0.3s; }
+        .event-marker__explosion-spike--5 { height: 14px; transform: translateX(-50%) translateY(-100%) rotate(180deg); animation-delay: 0.4s; }
+        .event-marker__explosion-spike--6 { height: 11px; transform: translateX(-50%) translateY(-100%) rotate(225deg); animation-delay: 0.5s; }
+        .event-marker__explosion-spike--7 { height: 14px; transform: translateX(-50%) translateY(-100%) rotate(270deg); animation-delay: 0.6s; }
+        .event-marker__explosion-spike--8 { height: 11px; transform: translateX(-50%) translateY(-100%) rotate(315deg); animation-delay: 0.7s; }
+        .event-marker__explosion-center-dot {
+          position: absolute;
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+          background: var(--event-color, #e8502a);
+          box-shadow: 0 0 6px 2px color-mix(in srgb, var(--event-color, #e8502a) 60%, transparent);
+          animation: explosionDotGlow 1.8s ease-in-out infinite alternate;
+        }
+        .event-marker--explosion.event-marker--zoomed-out .event-marker__explosion-spike {
+          width: 1.5px;
+          animation: none;
+          filter: drop-shadow(0 0 3px color-mix(in srgb, var(--event-color, #e8502a) 44%, transparent));
+        }
+        .event-marker--explosion.event-marker--zoomed-out .event-marker__explosion-spike--1,
+        .event-marker--explosion.event-marker--zoomed-out .event-marker__explosion-spike--3,
+        .event-marker--explosion.event-marker--zoomed-out .event-marker__explosion-spike--5,
+        .event-marker--explosion.event-marker--zoomed-out .event-marker__explosion-spike--7 {
+          height: 7px;
+        }
+        .event-marker--explosion.event-marker--zoomed-out .event-marker__explosion-spike--2,
+        .event-marker--explosion.event-marker--zoomed-out .event-marker__explosion-spike--4,
+        .event-marker--explosion.event-marker--zoomed-out .event-marker__explosion-spike--6,
+        .event-marker--explosion.event-marker--zoomed-out .event-marker__explosion-spike--8 {
+          height: 5px;
+        }
+        .event-marker--explosion.event-marker--zoomed-out .event-marker__explosion-center-dot {
+          width: 4px;
+          height: 4px;
+          animation: none;
+          box-shadow: 0 0 4px 1px color-mix(in srgb, var(--event-color, #e8502a) 70%, transparent);
+        }
+        .event-marker__artillery-shell {
+          position: relative;
+          width: 44px;
+          height: 44px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          pointer-events: auto;
+        }
+        .event-marker--artillery.event-marker--zoomed-out .event-marker__artillery-shell {
+          width: 14px;
+          height: 14px;
+        }
+        .event-marker__artillery-pulse-ring {
+          position: absolute;
+          inset: -10px;
+          border-radius: 50%;
+          border: 1.8px solid color-mix(in srgb, var(--event-color, #fb7185) 40%, transparent);
+          animation: artilleryPulseRing 1.9s ease-out infinite;
+        }
+        .event-marker__artillery-pulse-ring--outer {
+          inset: -16px;
+          border-color: color-mix(in srgb, var(--event-color, #fb7185) 20%, transparent);
+          animation-delay: 0.55s;
+        }
+        .event-marker__artillery-circle {
+          position: absolute;
+          inset: 0;
+          border-radius: 50%;
+          border: 2.5px solid var(--event-color, #fb7185);
+          background: color-mix(in srgb, var(--event-color, #fb7185) 14%, transparent);
+          box-shadow:
+            0 0 0 1px color-mix(in srgb, var(--event-color, #fb7185) 18%, transparent),
+            0 0 12px color-mix(in srgb, var(--event-color, #fb7185) 22%, transparent);
+        }
+        .event-marker__artillery-crosshair {
+          position: absolute;
+          inset: 8px;
+        }
+        .event-marker__artillery-crosshair::before,
+        .event-marker__artillery-crosshair::after {
+          content: '';
+          position: absolute;
+          background: color-mix(in srgb, var(--event-color, #fb7185) 75%, transparent);
+          opacity: 0.85;
+        }
+        .event-marker__artillery-crosshair::before {
+          width: 1.5px;
+          height: 100%;
+          left: 50%;
+          transform: translateX(-50%);
+        }
+        .event-marker__artillery-crosshair::after {
+          height: 1.5px;
+          width: 100%;
+          top: 50%;
+          transform: translateY(-50%);
+        }
+        .event-marker__artillery-cannon {
+          position: relative;
+          width: 22px;
+          height: 22px;
+          transform: rotate(-28deg);
+          animation: artilleryRecoil 1.9s ease-in-out infinite;
+        }
+        .event-marker__artillery-barrel {
+          position: absolute;
+          width: 15px;
+          height: 3.5px;
+          right: 3px;
+          top: 5px;
+          border-radius: 999px;
+          background: var(--event-color, #fb7185);
+          box-shadow: 0 0 5px color-mix(in srgb, var(--event-color, #fb7185) 45%, transparent);
+        }
+        .event-marker__artillery-base {
+          position: absolute;
+          width: 10px;
+          height: 6px;
+          left: 6px;
+          bottom: 6px;
+          border-radius: 3px 3px 2px 2px;
+          background: var(--event-color, #fb7185);
+        }
+        .event-marker__artillery-wheel {
+          position: absolute;
+          width: 5px;
+          height: 5px;
+          bottom: 2px;
+          border-radius: 50%;
+          background: var(--event-color, #fb7185);
+          box-shadow: 0 0 4px color-mix(in srgb, var(--event-color, #fb7185) 38%, transparent);
+        }
+        .event-marker__artillery-wheel--left {
+          left: 5px;
+        }
+        .event-marker__artillery-wheel--right {
+          left: 12px;
+        }
+        .event-marker__artillery-flash {
+          position: absolute;
+          width: 7px;
+          height: 7px;
+          right: 7px;
+          top: 10px;
+          border-radius: 50%;
+          background: color-mix(in srgb, var(--event-color, #fb7185) 80%, #ffd166 20%);
+          box-shadow: 0 0 8px 3px color-mix(in srgb, var(--event-color, #fb7185) 55%, transparent);
+          animation: artilleryFlash 1.9s ease-in-out infinite;
+        }
+        .event-marker--artillery.event-marker--zoomed-out .event-marker__artillery-cannon {
+          width: 10px;
+          height: 10px;
+          animation: none;
+        }
+        .event-marker--artillery.event-marker--zoomed-out .event-marker__artillery-barrel {
+          width: 7px;
+          height: 2px;
+          right: 1px;
+          top: 2px;
+        }
+        .event-marker--artillery.event-marker--zoomed-out .event-marker__artillery-base {
+          width: 5px;
+          height: 3px;
+          left: 3px;
+          bottom: 3px;
+        }
+        .event-marker--artillery.event-marker--zoomed-out .event-marker__artillery-wheel {
+          width: 2px;
+          height: 2px;
+          bottom: 1px;
+          box-shadow: 0 0 3px color-mix(in srgb, var(--event-color, #fb7185) 35%, transparent);
+        }
+        .event-marker--artillery.event-marker--zoomed-out .event-marker__artillery-wheel--left {
+          left: 2px;
+        }
+        .event-marker--artillery.event-marker--zoomed-out .event-marker__artillery-wheel--right {
+          left: 5px;
+        }
+        .event-marker__car-attack-shell {
+          position: relative;
+          width: 56px;
+          height: 56px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          pointer-events: auto;
+        }
+        .event-marker--car-attack.event-marker--zoomed-out .event-marker__car-attack-shell {
+          width: 14px;
+          height: 14px;
+        }
+        .event-marker__car-attack-wave {
+          position: absolute;
+          width: 56px;
+          height: 56px;
+          border-radius: 50%;
+          border: 2px solid color-mix(in srgb, var(--event-color, #cc3300) 50%, transparent);
+          animation: carAttackWave 2s ease-out infinite;
+        }
+        .event-marker__car-attack-wave:nth-child(2) {
+          animation-delay: 0.7s;
+        }
+        .event-marker__car-attack-base-circle {
+          position: absolute;
+          width: 48px;
+          height: 48px;
+          border-radius: 50%;
+          border: 2.5px solid color-mix(in srgb, var(--event-color, #cc3300) 88%, #ff8c00 12%);
+          background: color-mix(in srgb, var(--event-color, #cc3300) 12%, transparent);
+          box-shadow:
+            0 0 0 1px color-mix(in srgb, var(--event-color, #cc3300) 18%, transparent),
+            0 0 12px color-mix(in srgb, var(--event-color, #ff8c00) 18%, transparent);
+        }
+        .event-marker__car-attack-car-group {
+          position: relative;
+          width: 32px;
+          height: 18px;
+          margin-top: 6px;
+          z-index: 3;
+        }
+        .event-marker__car-attack-car-body {
+          position: absolute;
+          bottom: 0;
+          left: 0;
+          width: 32px;
+          height: 10px;
+          border-radius: 2px;
+          background: #3a1a00;
+        }
+        .event-marker__car-attack-car-roof {
+          position: absolute;
+          bottom: 8px;
+          left: 8px;
+          width: 16px;
+          height: 9px;
+          border-radius: 4px 4px 1px 1px;
+          background: #3a1a00;
+        }
+        .event-marker__car-attack-car-window {
+          position: absolute;
+          bottom: 10px;
+          left: 10px;
+          width: 12px;
+          height: 6px;
+          border-radius: 2px 2px 0 0;
+          background: rgba(255, 120, 0, 0.55);
+          box-shadow: 0 0 5px 1px rgba(255, 100, 0, 0.6);
+          animation: carAttackWindowGlow 0.5s ease-in-out infinite alternate;
+        }
+        .event-marker__car-attack-car-wheel {
+          position: absolute;
+          width: 7px;
+          height: 7px;
+          bottom: -3px;
+          border-radius: 50%;
+          background: #1a0a00;
+          border: 1.5px solid #3a1a00;
+        }
+        .event-marker__car-attack-car-wheel--left {
+          left: 3px;
+        }
+        .event-marker__car-attack-car-wheel--right {
+          right: 3px;
+        }
+        .event-marker__car-attack-flames {
+          position: absolute;
+          bottom: 22px;
+          left: 50%;
+          transform: translateX(-50%);
+          width: 34px;
+          height: 24px;
+          display: flex;
+          align-items: flex-end;
+          justify-content: center;
+          gap: 2px;
+          z-index: 4;
+        }
+        .event-marker__car-attack-flame {
+          border-radius: 50% 50% 30% 30% / 60% 60% 40% 40%;
+          animation: carAttackFlicker 0.4s ease-in-out infinite alternate;
+          transform-origin: bottom center;
+        }
+        .event-marker__car-attack-flame--1 {
+          width: 7px;
+          height: 16px;
+          background: radial-gradient(ellipse at 40% 80%, #fff176, #ff8c00, #cc2200);
+          animation-delay: 0s;
+        }
+        .event-marker__car-attack-flame--2 {
+          width: 9px;
+          height: 22px;
+          margin-bottom: 1px;
+          background: radial-gradient(ellipse at 40% 80%, #ffffff, #ffcc00, #ff4400, #991100);
+          animation-delay: 0.07s;
+        }
+        .event-marker__car-attack-flame--3 {
+          width: 8px;
+          height: 18px;
+          background: radial-gradient(ellipse at 40% 80%, #fff176, #ff6600, #bb1100);
+          animation-delay: 0.13s;
+        }
+        .event-marker__car-attack-flame--4 {
+          width: 6px;
+          height: 13px;
+          background: radial-gradient(ellipse at 40% 80%, #ffee58, #ff8800, #cc2200);
+          animation-delay: 0.2s;
+        }
+        .event-marker__car-attack-flame-core {
+          position: absolute;
+          bottom: 22px;
+          left: 50%;
+          width: 6px;
+          height: 10px;
+          transform: translateX(-50%);
+          border-radius: 50% 50% 30% 30% / 60% 60% 40% 40%;
+          background: radial-gradient(ellipse at 50% 80%, #ffffff, #aaddff, rgba(100,180,255,0));
+          animation: carAttackCoreFlicker 0.3s ease-in-out infinite alternate;
+          z-index: 5;
+        }
+        .event-marker__car-attack-smoke {
+          position: absolute;
+          border-radius: 50%;
+          background: rgba(50, 30, 20, 0.45);
+          animation: carAttackSmokeRise 1.4s ease-out infinite;
+          z-index: 6;
+        }
+        .event-marker__car-attack-smoke--1 {
+          width: 10px;
+          height: 10px;
+          bottom: 44px;
+          left: 18px;
+          animation-delay: 0s;
+        }
+        .event-marker__car-attack-smoke--2 {
+          width: 8px;
+          height: 8px;
+          bottom: 44px;
+          left: 26px;
+          animation-delay: 0.45s;
+        }
+        .event-marker__car-attack-smoke--3 {
+          width: 7px;
+          height: 7px;
+          bottom: 44px;
+          left: 22px;
+          animation-delay: 0.9s;
+        }
+        .event-marker--car-attack.event-marker--zoomed-out .event-marker__car-attack-car-group {
+          width: 10px;
+          height: 7px;
+          margin-top: 2px;
+        }
+        .event-marker--car-attack.event-marker--zoomed-out .event-marker__car-attack-car-body {
+          width: 10px;
+          height: 4px;
+        }
+        .event-marker--car-attack.event-marker--zoomed-out .event-marker__car-attack-car-roof {
+          width: 5px;
+          height: 3px;
+          left: 3px;
+          bottom: 3px;
+        }
+        .event-marker--car-attack.event-marker--zoomed-out .event-marker__car-attack-car-window {
+          width: 4px;
+          height: 2px;
+          left: 3px;
+          bottom: 4px;
+          animation: none;
+          box-shadow: 0 0 3px 1px rgba(255, 110, 0, 0.55);
+        }
+        .event-marker--car-attack.event-marker--zoomed-out .event-marker__car-attack-car-wheel {
+          width: 2px;
+          height: 2px;
+          bottom: -1px;
+          border-width: 1px;
+        }
+        .event-marker--car-attack.event-marker--zoomed-out .event-marker__car-attack-car-wheel--left {
+          left: 1px;
+        }
+        .event-marker--car-attack.event-marker--zoomed-out .event-marker__car-attack-car-wheel--right {
+          right: 1px;
+        }
+        .event-marker--car-attack.event-marker--zoomed-out .event-marker__car-attack-flames {
+          width: 10px;
+          height: 8px;
+          bottom: 6px;
+          gap: 1px;
+        }
+        .event-marker--car-attack.event-marker--zoomed-out .event-marker__car-attack-flame {
+          animation: none;
+        }
+        .event-marker--car-attack.event-marker--zoomed-out .event-marker__car-attack-flame--1,
+        .event-marker--car-attack.event-marker--zoomed-out .event-marker__car-attack-flame--4 {
+          width: 2px;
+          height: 4px;
+        }
+        .event-marker--car-attack.event-marker--zoomed-out .event-marker__car-attack-flame--2 {
+          width: 3px;
+          height: 6px;
+          margin-bottom: 0;
+        }
+        .event-marker--car-attack.event-marker--zoomed-out .event-marker__car-attack-flame--3 {
+          width: 2px;
+          height: 5px;
+        }
+        .event-marker--car-attack.event-marker--zoomed-out .event-marker__car-attack-flame-core {
+          width: 2px;
+          height: 4px;
+          bottom: 6px;
+          animation: none;
+        }
         .event-marker__squad-shell {
           position: relative;
           width: 60px;
@@ -1075,6 +1810,21 @@ export default function MapComponent({ events = [], focusedEvent = null, locale 
         .cluster-location-list::-webkit-scrollbar { width: 4px; }
         .cluster-location-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
         @keyframes droneOrbit { from { transform: rotate(0deg) translateX(20px); } to { transform: rotate(-360deg) translateX(20px); } }
+        @keyframes airstrikeShockwave { 0% { transform: scale(0.6); opacity: 0.9; } 80% { transform: scale(2.2); opacity: 0; } 100% { transform: scale(2.2); opacity: 0; } }
+        @keyframes airstrikeJetDive { 0% { transform: translateY(-4px); } 50% { transform: translateY(2px); } 100% { transform: translateY(-4px); } }
+        @keyframes airstrikeTargetBlink { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.3; transform: scale(1.3); } }
+        @keyframes airstrikeImpactFlash { 0%, 100% { opacity: 0; transform: scale(0.5); } 50% { opacity: 1; transform: scale(1.4); } }
+        @keyframes explosionPulseRing { 0% { transform: scale(1); opacity: 0.8; } 60% { transform: scale(1.4); opacity: 0.2; } 100% { transform: scale(1.6); opacity: 0; } }
+        @keyframes explosionSpikeFlicker { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        @keyframes explosionDotGlow { from { box-shadow: 0 0 4px 1px color-mix(in srgb, var(--event-color, #e8502a) 50%, transparent); } to { box-shadow: 0 0 10px 4px color-mix(in srgb, var(--event-color, #ff8a2a) 80%, transparent); } }
+        @keyframes artilleryPulseRing { 0% { transform: scale(1); opacity: 0.75; } 60% { transform: scale(1.38); opacity: 0.2; } 100% { transform: scale(1.55); opacity: 0; } }
+        @keyframes artilleryRecoil { 0%, 100% { transform: rotate(-28deg) translateX(0); } 18% { transform: rotate(-28deg) translateX(-1px); } 35% { transform: rotate(-28deg) translateX(1px); } }
+        @keyframes artilleryFlash { 0%, 100% { opacity: 0; transform: scale(0.45); } 18% { opacity: 1; transform: scale(1.2); } 35% { opacity: 0.2; transform: scale(0.8); } }
+        @keyframes carAttackWave { 0% { transform: scale(0.7); opacity: 0.9; } 80% { transform: scale(2.2); opacity: 0; } 100% { transform: scale(2.2); opacity: 0; } }
+        @keyframes carAttackFlicker { 0% { transform: scaleX(1) scaleY(1) skewX(0deg); } 33% { transform: scaleX(0.85) scaleY(1.1) skewX(-4deg); } 66% { transform: scaleX(1.1) scaleY(0.92) skewX(3deg); } 100% { transform: scaleX(0.9) scaleY(1.08) skewX(-2deg); } }
+        @keyframes carAttackCoreFlicker { from { opacity: 0.8; transform: translateX(-50%) scaleY(1); } to { opacity: 1; transform: translateX(-50%) scaleY(1.2); } }
+        @keyframes carAttackWindowGlow { from { background: rgba(255,100,0,0.45); box-shadow: 0 0 4px 1px rgba(255,80,0,0.5); } to { background: rgba(255,160,20,0.75); box-shadow: 0 0 8px 2px rgba(255,120,0,0.8); } }
+        @keyframes carAttackSmokeRise { 0% { transform: translateY(0) scale(0.6); opacity: 0.5; } 60% { transform: translateY(-14px) scale(1.4); opacity: 0.3; } 100% { transform: translateY(-22px) scale(1.8); opacity: 0; } }
         @keyframes warplaneSquad { 0% { transform: translateY(var(--squad-travel, 40px)); opacity: 0; } 12% { opacity: 1; } 88% { opacity: 1; } 100% { transform: translateY(calc(var(--squad-travel, 40px) * -1)); opacity: 0; } }
         @keyframes symbolPulse { 0% { opacity: 0.85; transform: scale(0.55); } 100% { opacity: 0; transform: scale(1.7); } }
         @media (max-width: 768px), (pointer: coarse) {

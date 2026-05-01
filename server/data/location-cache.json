@@ -901,5 +901,103 @@
     "resolved": true,
     "source": "nominatim",
     "label": "الصوانة"
+  },
+  "الزرارية": {
+    "lat": 33.342066,
+    "lng": 35.3316898,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "الزرارية"
+  },
+  "bani haiyyan": {
+    "lat": 33.2467409,
+    "lng": 35.4869852,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "Bani Haiyyan"
+  },
+  "al-haniyeh": {
+    "lat": 33.186152,
+    "lng": 35.223133,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "Al-Haniyeh"
+  },
+  "yاطر": {
+    "lat": 33.147936,
+    "lng": 35.3262299,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "Yاطر"
+  },
+  "qalaouiyeh": {
+    "lat": 33.2503924,
+    "lng": 35.4195115,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "Qalaouiyeh"
+  },
+  "دير قانون راس العين": {
+    "lat": 33.2138543,
+    "lng": 35.2241567,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "دير قانون راس العين"
+  },
+  "tولين": {
+    "lat": 33.2544257,
+    "lng": 35.4399098,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "Tولين"
+  },
+  "braachit": {
+    "lat": 33.175473,
+    "lng": 35.441914,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "Braachit"
+  },
+  "kafra": {
+    "lat": 33.1805341,
+    "lng": 35.3540027,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "Kafra"
+  },
+  "yohmor al-shaqif": {
+    "lat": 33.3123651,
+    "lng": 35.5177474,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "Yohmor al-Shaqif"
+  },
+  "بريقع": {
+    "lat": 33.3408205,
+    "lng": 35.3816943,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "بريقع"
+  },
+  "south lebanon": {
+    "lat": 33.2855585,
+    "lng": 35.3038316,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "South Lebanon"
+  },
+  "حلتا": {
+    "lat": 33.3141477,
+    "lng": 35.6632289,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "حلتا"
+  },
+  "kounine": {
+    "lat": 33.1496157,
+    "lng": 35.4466692,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "Kounine"
   }
 }

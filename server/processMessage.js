@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { buildFingerprint } from './dedupe.js';
+import { classifyTelegramMessage } from './openaiClassifier.js';
 import {
   extractKnownLocationFromText,
   extractKnownLocationsFromText,
@@ -80,6 +81,49 @@ const LOCATION_BLOCKLIST_PREFIXES = [
   '\u0627\u0644\u0645\u0633\u0624\u0648\u0644',
 ];
 
+const NON_ALERT_ARABIC_HINTS = [
+  '\u0627\u0644\u0631\u0626\u064a\u0633',
+  '\u0648\u0632\u064a\u0631',
+  '\u0627\u0644\u062d\u0643\u0648\u0645\u0629',
+  '\u0645\u0642\u0627\u0628\u0644\u0629',
+  '\u062a\u0635\u0631\u064a\u062d',
+  '\u0628\u064a\u0627\u0646',
+  '\u0646\u0639\u064a',
+  '\u0627\u0633\u062a\u0634\u0647\u0627\u062f',
+  '\u0634\u0647\u064a\u062f',
+  '\u0627\u0644\u0634\u0631\u0642 \u0627\u0644\u0623\u0648\u0633\u0637',
+  '\u0623\u0643\u0633\u064a\u0648\u0633',
+];
+
+const STRONG_ALERT_ENGLISH_HINTS = [
+  'airstrike',
+  'drone strike',
+  'warplane',
+  'raid',
+  'shelling',
+  'artillery',
+  'missile',
+  'explosion',
+  'demolition',
+  'targeted',
+  'evacuation',
+  'warning',
+];
+
+const NON_ALERT_ENGLISH_HINTS = [
+  'president',
+  'minister',
+  'statement',
+  'interview',
+  'meeting',
+  'according to',
+  'axios',
+  'east middle',
+  'obituary',
+  'martyr',
+  'killed in damascus',
+];
+
 function normalizeArabicText(value) {
   return (value || '')
     .normalize('NFKD')
@@ -91,6 +135,10 @@ function normalizeArabicText(value) {
 
 function includesArabic(text, token) {
   return normalizeArabicText(text).includes(normalizeArabicText(token));
+}
+
+function containsArabicHint(text, hints) {
+  return hints.some((hint) => includesArabic(text, hint));
 }
 
 function hasVehicleMention(text) {
@@ -293,6 +341,58 @@ function isConflictEvent(text) {
   );
 }
 
+function hasStrongAlertSignal(text) {
+  return (
+    hasExplicitWarningSignal(text) ||
+    hasDroneSignal(text) ||
+    hasVehicleMention(text) && hasVehicleAttackSignal(text) ||
+    includesArabic(text, ARABIC.raid) ||
+    includesArabic(text, ARABIC.raids) ||
+    includesArabic(text, ARABIC.shelling) ||
+    includesArabic(text, ARABIC.explosion) ||
+    includesArabic(text, ARABIC.blast) ||
+    includesArabic(text, ARABIC.demolition) ||
+    includesArabic(text, ARABIC.targeting) ||
+    includesArabic(text, ARABIC.missileFall) ||
+    includesArabic(text, ARABIC.warplaneText) ||
+    STRONG_ALERT_ENGLISH_HINTS.some((hint) => text.toLowerCase().includes(hint))
+  );
+}
+
+function looksLikeNonAlertNews(text) {
+  const normalizedEnglish = text.toLowerCase();
+  return (
+    containsArabicHint(text, NON_ALERT_ARABIC_HINTS) ||
+    NON_ALERT_ENGLISH_HINTS.some((hint) => normalizedEnglish.includes(hint))
+  );
+}
+
+function shouldUseOpenAiClassification(text) {
+  const trimmed = String(text || '').trim();
+  if (!trimmed) {
+    return false;
+  }
+
+  if (!hasStrongAlertSignal(trimmed)) {
+    return false;
+  }
+
+  if (looksLikeNonAlertNews(trimmed) && !(
+    includesArabic(trimmed, ARABIC.raid) ||
+    includesArabic(trimmed, ARABIC.raids) ||
+    includesArabic(trimmed, ARABIC.shelling) ||
+    includesArabic(trimmed, ARABIC.demolition) ||
+    includesArabic(trimmed, ARABIC.explosion) ||
+    hasDroneSignal(trimmed) ||
+    hasExplicitWarningSignal(trimmed) ||
+    /\bairstrike\b|\braid\b|\bdrone strike\b|\bshelling\b|\bartillery\b|\bmissile\b/i.test(trimmed)
+  )) {
+    return false;
+  }
+
+  return true;
+}
+
 function cleanExtractedLocation(value) {
   let location = value
     .replace(/^[\s:،,.!؟\-]+|[\s:،,.!؟\-]+$/gu, '')
@@ -421,8 +521,9 @@ function extractTelegramLocations(text) {
 
 async function buildAlertForLocation(text, sourceChannel, location, forcedType) {
   const coords = await resolveCoordinates(location);
-  const severity = severityFromText(text);
-  const type = forcedType ?? inferType(text);
+  const severity = forcedType?.severity || severityFromText(text);
+  const type = forcedType?.type ?? inferType(text);
+  const confidence = Number.isFinite(forcedType?.confidence) ? forcedType.confidence : 0.6;
 
   return {
     id: crypto.randomUUID(),
@@ -437,28 +538,55 @@ async function buildAlertForLocation(text, sourceChannel, location, forcedType) 
     sourceChannel,
     resolvedLocation: coords.resolved,
     locationSource: coords.source,
-    reliabilityScore: 1,
+    reliabilityScore: confidence,
     alertLevel: severity === 'high' ? 'red' : severity === 'medium' ? 'orange' : 'yellow',
-    sourceFingerprint: buildFingerprint({ sourceChannel, text, location, type }),
+    sourceFingerprint: buildFingerprint({ text, location, type }),
   };
 }
 
-async function buildTelegramAlert(text, sourceChannel) {
+async function buildTelegramAlert(text, sourceChannel, analysis = null) {
   const alerts = [];
-  const locations = extractTelegramLocations(text);
+  const locations = uniqueLocations([
+    ...extractTelegramLocations(text),
+    ...((analysis?.locations || []).filter(Boolean)),
+  ]);
+  const forcedType = analysis?.shouldCreateAlert
+    ? {
+        type: analysis.type,
+        severity: analysis.severity,
+        confidence: analysis.confidence,
+      }
+    : null;
 
   for (const location of locations) {
-    alerts.push(await buildAlertForLocation(text, sourceChannel, location));
+    alerts.push(await buildAlertForLocation(text, sourceChannel, location, forcedType));
   }
 
   return {
-    isConflictEvent: isConflictEvent(text),
+    isConflictEvent: analysis?.isConflictEvent ?? isConflictEvent(text),
     alerts,
   };
 }
 
 export async function processMessage(text, sourceChannel) {
-  return buildTelegramAlert(text, sourceChannel);
+  let analysis = null;
+
+  if (shouldUseOpenAiClassification(text)) {
+    try {
+      analysis = await classifyTelegramMessage(text, sourceChannel);
+    } catch (error) {
+      console.warn('[openai] message classification failed:', error.message);
+    }
+  }
+
+  if (analysis && !analysis.shouldCreateAlert) {
+    return {
+      isConflictEvent: analysis.isConflictEvent,
+      alerts: [],
+    };
+  }
+
+  return buildTelegramAlert(text, sourceChannel, analysis);
 }
 
 export function getMappableAlerts(processed) {

@@ -5,3 +5,4 @@ dist
 .env
 .env.production
 server/data/alerts.json
+server/data/telegram-state.json

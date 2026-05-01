@@ -1,5 +1,7 @@
 import express from 'express';
 import cors from 'cors';
+import fs from 'node:fs';
+import path from 'node:path';
 import { config } from './config.js';
 import { getMappableAlerts, processMessage } from './processMessage.js';
 import {
@@ -9,7 +11,7 @@ import {
   serializeAlertsToCsv,
 } from './supabaseStore.js';
 import { isLikelyDuplicate } from './dedupe.js';
-import { getChannelMessagesSince, getLatestChannelMessages, startTelegramListener } from './telegramListener.js';
+import { getChannelMessagesAfterId, getLatestChannelMessages, startTelegramListener } from './telegramListener.js';
 import { trackVisitor, getStats } from './analytics.js';
 import { resolveCoordinates } from './coordinates.js';
 
@@ -19,8 +21,9 @@ app.set('trust proxy', true);
 app.use(cors());
 app.use(express.json());
 
-const ACTIVE_ALERT_TYPES = new Set(['drone', 'warplane']);
-const TELEGRAM_CHANNELS_ENABLED = false;
+const ACTIVE_ALERT_TYPES = new Set(config.activeAlertTypes);
+const TELEGRAM_CHANNELS_ENABLED = config.telegramEnabled;
+const EXTERNAL_PRIORITY_TYPES = new Set(['drone', 'warplane']);
 const DEFAULT_ALERT_LB_API_URL = 'https://icy-limit-4d83.karakalla02.workers.dev/';
 const PLACE_LABELS_URL = 'https://alert-lb.com/lebanon-places.geojson';
 const NON_LOCATION_AREA_LABELS = new Set([
@@ -29,6 +32,47 @@ const NON_LOCATION_AREA_LABELS = new Set([
   '\u0645\u0642\u0627\u062a\u0644\u0627\u062a \u062d\u0631\u0628\u064a\u0629',
 ]);
 let placeLabelIndexPromise = null;
+let telegramSyncState = loadTelegramSyncState();
+let telegramInitialBackfillDone = false;
+
+function loadTelegramSyncState() {
+  try {
+    if (!fs.existsSync(config.telegramStateFile)) {
+      return { channels: {} };
+    }
+
+    const payload = JSON.parse(fs.readFileSync(config.telegramStateFile, 'utf8'));
+    return payload && typeof payload === 'object' && payload.channels ? payload : { channels: {} };
+  } catch (error) {
+    console.warn('[telegram] failed to load sync state:', error.message);
+    return { channels: {} };
+  }
+}
+
+function saveTelegramSyncState() {
+  try {
+    fs.mkdirSync(path.dirname(config.telegramStateFile), { recursive: true });
+    fs.writeFileSync(config.telegramStateFile, JSON.stringify(telegramSyncState, null, 2), 'utf8');
+  } catch (error) {
+    console.warn('[telegram] failed to persist sync state:', error.message);
+  }
+}
+
+function getTelegramChannelState(channel) {
+  const key = channel || '__default__';
+  if (!telegramSyncState.channels[key]) {
+    telegramSyncState.channels[key] = { lastSeenMessageId: 0, initializedAt: null };
+  }
+
+  return telegramSyncState.channels[key];
+}
+
+function updateTelegramChannelState(channel, lastSeenMessageId) {
+  const state = getTelegramChannelState(channel);
+  state.lastSeenMessageId = Math.max(Number(state.lastSeenMessageId || 0), Number(lastSeenMessageId || 0));
+  state.initializedAt = state.initializedAt || new Date().toISOString();
+  saveTelegramSyncState();
+}
 
 function getAlertLbApiUrl() {
   const configuredUrl = String(process.env.ALERT_LB_API_URL || '').trim();
@@ -238,7 +282,26 @@ async function getTelegramAlerts() {
   const channels = config.telegramChannels.length > 0 ? config.telegramChannels : [undefined];
 
   for (const channel of channels) {
-    const channelMessages = await getChannelMessagesSince(24, channel, 100);
+    const channelState = getTelegramChannelState(channel);
+    const recentMessages = await getLatestChannelMessages(10, channel);
+    const newestSeenId = recentMessages.reduce(
+      (max, message) => Math.max(max, Number(message?.id || 0)),
+      Number(channelState.lastSeenMessageId || 0)
+    );
+
+    if (!telegramInitialBackfillDone && Number(channelState.lastSeenMessageId || 0) <= 0) {
+      updateTelegramChannelState(channel, newestSeenId);
+      continue;
+    }
+
+    const channelMessages = await getChannelMessagesAfterId(channelState.lastSeenMessageId, channel, 30);
+
+    if (channelMessages.length === 0) {
+      if (newestSeenId > Number(channelState.lastSeenMessageId || 0)) {
+        updateTelegramChannelState(channel, newestSeenId);
+      }
+      continue;
+    }
 
     for (const message of channelMessages) {
       const processed = await processMessage(message.text, message.channel);
@@ -261,8 +324,15 @@ async function getTelegramAlerts() {
         });
       }
     }
+
+    const latestProcessedId = channelMessages.reduce(
+      (max, message) => Math.max(max, Number(message?.id || 0)),
+      Number(channelState.lastSeenMessageId || 0)
+    );
+    updateTelegramChannelState(channel, latestProcessedId);
   }
 
+  telegramInitialBackfillDone = true;
   return processedAlerts.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 }
 
@@ -318,6 +388,7 @@ async function fetchExternalAlerts() {
 
 const CACHE_TTL_MS = 90_000;
 const EXTERNAL_ALERTS_TTL_MS = 90_000;
+const EXTERNAL_ALERTS_STREAM_TTL_MS = 15_000;
 const EXTERNAL_ALERTS_429_BACKOFF_MS = 5 * 60 * 1000;
 let alertsCache = { data: null, fetchedAt: 0, refreshing: false };
 let externalAlertsCache = { data: [], fetchedAt: 0, retryAfter: 0 };
@@ -381,7 +452,7 @@ function applyStreamDiff(nextAlerts) {
 
 async function pollStreamSnapshot() {
   try {
-    await refreshAlertsCache();
+    await refreshAlertsCache({ force: true, preferFreshExternal: true });
     applyStreamDiff(alertsCache.data || []);
   } catch (error) {
     console.error('[stream] poll failed:', error.message);
@@ -425,10 +496,11 @@ function filterExpiredWarplanes(alerts, now = Date.now()) {
   return alerts.filter((alert) => !isExpiredWarplaneAlert(alert, now));
 }
 
-async function refreshAlertsCache() {
+async function refreshAlertsCache(options = {}) {
+  const { force = false, preferFreshExternal = false } = options;
   const now = Date.now();
 
-  if (alertsCache.data && now - alertsCache.fetchedAt < CACHE_TTL_MS) {
+  if (!force && alertsCache.data && now - alertsCache.fetchedAt < CACHE_TTL_MS) {
     return;
   }
 
@@ -449,8 +521,9 @@ async function refreshAlertsCache() {
     }
 
     let externalAlerts = filterActiveAlerts(filterExpiredWarplanes(externalAlertsCache.data || [], now));
+    const externalTtlMs = preferFreshExternal ? EXTERNAL_ALERTS_STREAM_TTL_MS : EXTERNAL_ALERTS_TTL_MS;
     const externalCacheFresh = externalAlertsCache.fetchedAt > 0
-      && now - externalAlertsCache.fetchedAt < EXTERNAL_ALERTS_TTL_MS;
+      && now - externalAlertsCache.fetchedAt < externalTtlMs;
     const inBackoffWindow = externalAlertsCache.retryAfter > now;
 
     if (externalCacheFresh) {
@@ -491,8 +564,7 @@ async function refreshAlertsCache() {
     const internalAlerts = storedAlerts.length > 0 ? storedAlerts : syncResult.alerts;
     
     const filteredInternal = filterActiveAlerts(filterExpiredWarplanes(internalAlerts, now))
-      .filter((a) => a.source !== 'telegram')
-      .filter((a) => externalAlerts.length === 0 || !ACTIVE_ALERT_TYPES.has(a.type));
+      .filter((a) => externalAlerts.length === 0 || !EXTERNAL_PRIORITY_TYPES.has(a.type));
 
     const alerts = filterActiveAlerts(filterExpiredWarplanes([...externalAlerts, ...filteredInternal], now)).sort(
       (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
@@ -703,8 +775,13 @@ async function bootstrap() {
 
   if (TELEGRAM_CHANNELS_ENABLED) {
     try {
-      await startTelegramListener(async ({ text, sourceChannel }) => {
+      await startTelegramListener(async ({ text, sourceChannel, messageId }) => {
         try {
+          const numericMessageId = Number(messageId || 0);
+          if (numericMessageId > 0) {
+            updateTelegramChannelState(sourceChannel, numericMessageId);
+          }
+
           const processed = await processMessage(text, sourceChannel);
           const alerts = filterActiveAlerts(getMappableAlerts(processed));
 

@@ -25,7 +25,7 @@ import RedEdgeGlow from './components/shared/RedEdgeGlow';
 import WarningToast from './components/shared/WarningToast';
 
 const LEBANON_CENTER = [33.8547, 35.8623];
-const ACTIVE_EVENT_TYPES = ['drone', 'warplane'];
+const ACTIVE_EVENT_TYPES = ['drone', 'warplane', 'airstrike', 'carAttack', 'artillery', 'missile', 'explosion', 'warning'];
 const ACTIVE_EVENT_TYPE_SET = new Set(ACTIVE_EVENT_TYPES);
 const TELEGRAM_UI_ENABLED = false;
 
@@ -364,67 +364,6 @@ function filterExpiredAlerts(alerts, now = Date.now()) {
   return alerts.filter((alert) => !isExpiredWarplaneAlert(alert, now));
 }
 
-function shouldIncludeLocalMapTestData() {
-  if (typeof window === 'undefined') {
-    return false;
-  }
-
-  const params = new URLSearchParams(window.location.search);
-  if (params.get('testMap') === '0') {
-    return false;
-  }
-
-  return ['localhost', '127.0.0.1'].includes(window.location.hostname);
-}
-
-function getLocalMapTestAlerts() {
-  const now = new Date().toISOString();
-
-  return [
-    normalizeAlert({
-      id: 'test-region-warplane-south',
-      type: 'warplane',
-      title: 'Test Region Coverage - South',
-      locationName: 'Test Region South',
-      lat: 33.26,
-      lng: 35.30,
-      timestamp: now,
-      severity: 'high',
-      radiusKm: 22,
-      source: 'test',
-      sourceLabel: 'Local Test',
-      verified: true,
-    }),
-    normalizeAlert({
-      id: 'test-drone-inside-region',
-      type: 'drone',
-      title: 'Test Drone Inside Region',
-      locationName: 'Test Drone South',
-      lat: 33.20,
-      lng: 35.33,
-      timestamp: now,
-      severity: 'medium',
-      radiusKm: 8,
-      source: 'test',
-      sourceLabel: 'Local Test',
-      verified: true,
-    }),
-    normalizeAlert({
-      id: 'test-car-attack-south',
-      type: 'carAttack',
-      title: 'Test Car Attack',
-      locationName: 'Test Point South',
-      lat: 33.16,
-      lng: 35.25,
-      timestamp: now,
-      severity: 'medium',
-      source: 'test',
-      sourceLabel: 'Local Test',
-      verified: true,
-    }),
-  ];
-}
-
 const ALERT_LB_TYPES = new Set(['drone', 'plane', 'warplane']);
 
 function isAlertLbType(event) {
@@ -432,7 +371,7 @@ function isAlertLbType(event) {
 }
 
 function isActiveEventType(event) {
-  return ACTIVE_EVENT_TYPE_SET.has(event.type) && event.source !== 'telegram';
+  return ACTIVE_EVENT_TYPE_SET.has(event.type);
 }
 
 async function fetchInternalAlerts() {
@@ -475,8 +414,7 @@ function useStrikeData() {
     let eventSource = null;
 
     function mergeWithLocalTestData(nextEvents) {
-      const localTestEvents = shouldIncludeLocalMapTestData() ? getLocalMapTestAlerts() : [];
-      return filterExpiredAlerts([...nextEvents, ...localTestEvents]).filter(isActiveEventType);
+      return filterExpiredAlerts(nextEvents).filter(isActiveEventType);
     }
 
     function commitEvents(nextEvents, { allowTone = true } = {}) {

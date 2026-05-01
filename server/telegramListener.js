@@ -144,6 +144,29 @@ export async function getChannelMessagesSince(hours = 24, channel = config.teleg
     .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 }
 
+export async function getChannelMessagesAfterId(lastSeenId = 0, channel = config.telegramChannels[0], maxMessages = 30) {
+  if (!hasTelegramConfig()) {
+    return latestRawMessages
+      .filter((message) => Number(message.id) > Number(lastSeenId || 0))
+      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+  }
+
+  const telegramClient = await ensureTelegramClient();
+  const targetChannel = channel || config.telegramChannels[0];
+
+  if (!targetChannel) {
+    return [];
+  }
+
+  const messages = await telegramClient.getMessages(targetChannel, { limit: maxMessages });
+
+  return messages
+    .map((message) => normalizeTelegramMessage(message, targetChannel))
+    .filter(Boolean)
+    .filter((message) => Number(message.id) > Number(lastSeenId || 0))
+    .sort((a, b) => Number(a.id) - Number(b.id));
+}
+
 export async function startTelegramListener(onMessage) {
   if (!hasTelegramConfig()) {
     console.log('Telegram listener disabled: TELEGRAM_API_ID or TELEGRAM_API_HASH missing.');
@@ -180,6 +203,7 @@ export async function startTelegramListener(onMessage) {
       await onMessage({
         text: messageText,
         sourceChannel: channelHandle,
+        messageId: String(event.message.id),
       });
     },
     new NewMessage({})

@@ -596,11 +596,7 @@ const MapMarker = React.memo(({ incident, locale, zoomLevel, map }) => {
     [incident.type, style.base, style.fillOpacity, incident.count, radius, isFresh, zoomLevel, coveragePixelRadius]);
   const handleClick = useCallback(() => zoomToCoverageArea(map, incident.lat, incident.lng, coverageRadiusMeters), 
     [map, incident.lat, incident.lng, coverageRadiusMeters]);
-  const showCoverage = zoomLevel >= 11 && (
-    incident.type === 'warplane' ||
-    incident.severity === 'high' ||
-    incident.count <= 1
-  );
+  const showCoverage = true;
   const isWarplane = incident.type === 'warplane';
   const coveragePathOptions = {
     color: style.base,
@@ -625,39 +621,31 @@ const MapMarker = React.memo(({ incident, locale, zoomLevel, map }) => {
 function MapEvents({ events, focusedEvent, locale }) {
   const map = useMap();
   const [zoomLevel, setZoomLevel] = useState(map.getZoom());
-  const mapData = useMemo(() => {
-    const validEvents = events.filter((e) => e.lat && e.lng && isInLebanon(e.lng, e.lat));
-    return clusterEvents(validEvents, locale);
-  }, [events, locale]);
   useEffect(() => {
-    const updatePerformanceClasses = (nextZoom, eventCount = mapData.length) => {
+    const updateZoomClass = (nextZoom) => {
       const container = map.getContainer();
       if (!container) return;
-      const shouldReduceMotion = nextZoom < 11 || eventCount > 24;
       container.classList.toggle('zoom-detail', nextZoom >= 11);
-      container.classList.toggle('reduced-motion-markers', shouldReduceMotion);
     };
     const onZoomEnd = () => {
       const nextZoom = map.getZoom();
       setZoomLevel(nextZoom);
-      updatePerformanceClasses(nextZoom);
+      updateZoomClass(nextZoom);
     };
-    updatePerformanceClasses(map.getZoom());
+    updateZoomClass(map.getZoom());
     map.on('zoomend', onZoomEnd);
     return () => {
       const container = map.getContainer();
       if (container) {
         container.classList.remove('zoom-detail');
-        container.classList.remove('reduced-motion-markers');
       }
       map.off('zoomend', onZoomEnd);
     };
-  }, [map, mapData.length]);
-  useEffect(() => {
-    const container = map.getContainer();
-    if (!container) return;
-    container.classList.toggle('reduced-motion-markers', zoomLevel < 11 || mapData.length > 24);
-  }, [map, mapData.length, zoomLevel]);
+  }, [map]);
+  const mapData = useMemo(() => {
+    const validEvents = events.filter((e) => e.lat && e.lng && isInLebanon(e.lng, e.lat));
+    return clusterEvents(validEvents, locale);
+  }, [events, locale]);
   useEffect(() => {
     if (focusedEvent && focusedEvent.lat && focusedEvent.lng && isInLebanon(focusedEvent.lng, focusedEvent.lat)) {
       const radiusMeters = getCoverageRadiusMeters(focusedEvent.type, focusedEvent.scope, focusedEvent.radiusKm ?? focusedEvent.radius_km);
@@ -1140,34 +1128,6 @@ export default function MapComponent({ events = [], focusedEvent = null, locale 
         }
         .leaflet-container.zoom-detail .uav-drone-marker {
           animation: droneOrbit 6s linear infinite;
-        }
-        .leaflet-container.reduced-motion-markers .event-marker * {
-          animation: none !important;
-          transition: none !important;
-        }
-        .leaflet-container.reduced-motion-markers .event-marker__airstrike-shockwave,
-        .leaflet-container.reduced-motion-markers .event-marker__airstrike-impact-dot,
-        .leaflet-container.reduced-motion-markers .event-marker__airstrike-target-ring,
-        .leaflet-container.reduced-motion-markers .event-marker__explosion-pulse-ring,
-        .leaflet-container.reduced-motion-markers .event-marker__car-attack-wave,
-        .leaflet-container.reduced-motion-markers .event-marker__car-attack-smoke,
-        .leaflet-container.reduced-motion-markers .event-marker__symbol-pulse {
-          display: none !important;
-        }
-        @media (pointer: coarse), (prefers-reduced-motion: reduce) {
-          .event-marker * {
-            animation: none !important;
-            transition: none !important;
-          }
-          .event-marker__airstrike-shockwave,
-          .event-marker__airstrike-impact-dot,
-          .event-marker__airstrike-target-ring,
-          .event-marker__explosion-pulse-ring,
-          .event-marker__car-attack-wave,
-          .event-marker__car-attack-smoke,
-          .event-marker__symbol-pulse {
-            display: none !important;
-          }
         }
         .event-marker--symbol-badge {
           pointer-events: auto;

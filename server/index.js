@@ -33,7 +33,7 @@ const NON_LOCATION_AREA_LABELS = new Set([
 ]);
 let placeLabelIndexPromise = null;
 let telegramSyncState = loadTelegramSyncState();
-const INITIAL_TELEGRAM_BACKFILL_LIMIT = 8;
+const INITIAL_TELEGRAM_BACKFILL_LIMIT = 10;
 
 function loadTelegramSyncState() {
   try {

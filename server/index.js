@@ -33,7 +33,7 @@ const NON_LOCATION_AREA_LABELS = new Set([
 ]);
 let placeLabelIndexPromise = null;
 let telegramSyncState = loadTelegramSyncState();
-let telegramInitialBackfillDone = false;
+const INITIAL_TELEGRAM_BACKFILL_LIMIT = 8;
 
 function loadTelegramSyncState() {
   try {
@@ -283,18 +283,15 @@ async function getTelegramAlerts() {
 
   for (const channel of channels) {
     const channelState = getTelegramChannelState(channel);
-    const recentMessages = await getLatestChannelMessages(10, channel);
+    const recentMessages = await getLatestChannelMessages(INITIAL_TELEGRAM_BACKFILL_LIMIT, channel);
     const newestSeenId = recentMessages.reduce(
       (max, message) => Math.max(max, Number(message?.id || 0)),
       Number(channelState.lastSeenMessageId || 0)
     );
-
-    if (!telegramInitialBackfillDone && Number(channelState.lastSeenMessageId || 0) <= 0) {
-      updateTelegramChannelState(channel, newestSeenId);
-      continue;
-    }
-
-    const channelMessages = await getChannelMessagesAfterId(channelState.lastSeenMessageId, channel, 30);
+    const hasSavedCheckpoint = Number(channelState.lastSeenMessageId || 0) > 0;
+    const channelMessages = hasSavedCheckpoint
+      ? await getChannelMessagesAfterId(channelState.lastSeenMessageId, channel, 30)
+      : [...recentMessages].sort((a, b) => Number(a.id) - Number(b.id));
 
     if (channelMessages.length === 0) {
       if (newestSeenId > Number(channelState.lastSeenMessageId || 0)) {
@@ -332,7 +329,6 @@ async function getTelegramAlerts() {
     updateTelegramChannelState(channel, latestProcessedId);
   }
 
-  telegramInitialBackfillDone = true;
   return processedAlerts.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 }
 

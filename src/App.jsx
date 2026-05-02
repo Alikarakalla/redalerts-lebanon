@@ -2215,8 +2215,13 @@ function MainApp() {
 }
 
 function App() {
-  const isAdminRoute = typeof window !== 'undefined'
-    && window.location.pathname.replace(/\/+$/u, '') === '/admin';
+  const isAdminRoute = typeof window !== 'undefined' && (() => {
+    const normalizedPath = window.location.pathname.replace(/\/+$/u, '');
+    const params = new URLSearchParams(window.location.search);
+    return normalizedPath === '/admin'
+      || normalizedPath === '/admin.html'
+      || params.get('admin') === '1';
+  })();
   const [locale, setLocale] = useState('ar');
 
   if (isAdminRoute) {

@@ -999,5 +999,12 @@
     "resolved": true,
     "source": "nominatim",
     "label": "Kounine"
+  },
+  "deir seryan": {
+    "lat": 33.2920997,
+    "lng": 35.5002379,
+    "resolved": true,
+    "source": "nominatim",
+    "label": "Deir Seryan"
   }
 }

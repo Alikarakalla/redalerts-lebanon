@@ -102,7 +102,7 @@ export default function DashboardModal({ onClose, locale }) {
 
                 <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-6">
                   <h3 className="mb-4 text-sm font-medium text-slate-400">
-                    {isAr ? 'إجمالي منذ التحديث الأخير' : 'Total Since Last Backend Restart'}
+                    {isAr ? 'إجمالي متراكم' : 'Persistent Totals'}
                   </h3>
                   <div className="flex items-center gap-12">
                     <div>

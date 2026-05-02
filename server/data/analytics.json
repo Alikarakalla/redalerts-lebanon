@@ -1,12 +1,19 @@
 {
-  "totalViews": 12,
-  "distinctVisitors": 2,
+  "totalViews": 24,
+  "distinctVisitors": 4,
   "dailyStats": {
     "2026-04-28": {
       "views": 12,
       "uniqueIps": [
         "8e151e2f22c9f75ce79fd4d5a060c1d6d7376f2ba246c2514e76845f7526b2c7",
         "c8b4112bdd5c18c15409b28a7657c4db4daf40673f3c93bf35f76d5ae8bdc22a"
+      ]
+    },
+    "2026-05-01": {
+      "views": 12,
+      "uniqueIps": [
+        "c8b4112bdd5c18c15409b28a7657c4db4daf40673f3c93bf35f76d5ae8bdc22a",
+        "1c27679d8e0c88239e521ca76441a747966e550c2db4f90c20a51e4e73908234"
       ]
     }
   },
@@ -16,19 +23,22 @@
       "device": "Desktop",
       "os": "Windows 10/11",
       "browser": "Chrome",
-      "timestamp": "2026-04-28T07:54:47.879Z",
+      "timestamp": "2026-05-01T16:46:22.731Z",
       "location": null,
       "flag": null
     }
   ],
   "deviceStats": {
-    "Desktop": 12
+    "Desktop": 18,
+    "iPhone": 6
   },
   "countryStats": {},
   "browserStats": {
-    "Chrome": 12
+    "Chrome": 18,
+    "Safari": 6
   },
   "hourlyStats": {
-    "2026-04-28T07:00": 12
+    "2026-04-28T07:00": 12,
+    "2026-05-01T16:00": 12
   }
 }

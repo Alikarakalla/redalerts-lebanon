@@ -313,15 +313,15 @@ app.get('/api/health', async (_req, res) => {
   });
 });
 
-app.post('/api/track', (req, res) => {
+app.post('/api/track', async (req, res) => {
   const ip = req.ip || req.connection?.remoteAddress || 'unknown';
   const ua = req.get('user-agent') || 'unknown';
-  trackVisitor(ip, ua);
+  await trackVisitor(ip, ua);
   res.json({ tracked: true });
 });
 
-app.get('/api/stats', (req, res) => {
-  res.json(getStats());
+app.get('/api/stats', async (req, res) => {
+  res.json(await getStats());
 });
 
 function parseHistoryFilters(query) {

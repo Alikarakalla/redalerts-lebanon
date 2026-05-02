@@ -39,6 +39,7 @@ export const config = {
   supabaseUrl: process.env.SUPABASE_URL || '',
   supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
   supabaseAlertsTable: process.env.SUPABASE_ALERTS_TABLE || 'alerts',
+  supabaseAnalyticsTable: process.env.SUPABASE_ANALYTICS_TABLE || 'analytics_snapshots',
 };
 
 export function hasTelegramConfig() {

@@ -200,6 +200,66 @@ function isValidCoordinatePair(lat, lng) {
   return Number.isFinite(Number(lat)) && Number.isFinite(Number(lng));
 }
 
+const NON_SPECIFIC_LOCATION_NAMES = new Set([
+  'lebanon',
+  'لبنان',
+  'south lebanon',
+  'جنوب لبنان',
+]);
+
+function normalizeLocationKey(value) {
+  return normalizePlaceLabel(value);
+}
+
+function isSpecificAlertLocation(alert) {
+  if (!alert?.locationName) {
+    return false;
+  }
+
+  const normalizedName = normalizeLocationKey(alert.locationName);
+  if (!normalizedName || NON_SPECIFIC_LOCATION_NAMES.has(normalizedName)) {
+    return false;
+  }
+
+  if (typeof alert.scope === 'string' && ['district', 'governorate', 'region'].includes(alert.scope)) {
+    return false;
+  }
+
+  return !normalizedName.includes(',');
+}
+
+function coordinateDelta(latA, lngA, latB, lngB) {
+  return Math.hypot(Number(latA) - Number(latB), Number(lngA) - Number(lngB));
+}
+
+async function alignAlertCoordinates(alert) {
+  if (!isSpecificAlertLocation(alert)) {
+    return alert;
+  }
+
+  const coords = await resolvePlaceLabelCoordinates(alert.locationName)
+    || await resolveCoordinates(alert.locationName);
+  if (!coords?.resolved || !isValidCoordinatePair(coords.lat, coords.lng)) {
+    return alert;
+  }
+
+  const hasExistingCoords = isValidCoordinatePair(alert.lat, alert.lng);
+  const shouldReplace = !hasExistingCoords
+    || coordinateDelta(alert.lat, alert.lng, coords.lat, coords.lng) > 0.0045;
+
+  if (!shouldReplace) {
+    return alert;
+  }
+
+  return {
+    ...alert,
+    lat: coords.lat,
+    lng: coords.lng,
+    resolvedLocation: true,
+    locationSource: coords.source || alert.locationSource || 'place-aligner',
+  };
+}
+
 async function resolveExternalArea(area) {
   const label = String(area || '').replace(/\s+/gu, ' ').trim();
   if (!label || NON_LOCATION_AREA_LABELS.has(label)) {
@@ -534,7 +594,9 @@ async function refreshAlertsCache(options = {}) {
       }
     } else {
       try {
-        externalAlerts = filterActiveAlerts(filterExpiredWarplanes(await fetchExternalAlerts(), now));
+        externalAlerts = filterActiveAlerts(
+          filterExpiredWarplanes(await fetchExternalAlerts(), now)
+        );
         externalAlertsCache = {
           data: externalAlerts,
           fetchedAt: now,
@@ -563,11 +625,15 @@ async function refreshAlertsCache(options = {}) {
     // Merge stored alerts with real-time external alerts
     // We prioritize external alerts for drones and planes
     const internalAlerts = storedAlerts.length > 0 ? storedAlerts : syncResult.alerts;
+    const [alignedExternalAlerts, alignedInternalAlerts] = await Promise.all([
+      Promise.all(externalAlerts.map(alignAlertCoordinates)),
+      Promise.all(internalAlerts.map(alignAlertCoordinates)),
+    ]);
     
-    const filteredInternal = filterActiveAlerts(filterExpiredWarplanes(internalAlerts, now))
-      .filter((a) => externalAlerts.length === 0 || !EXTERNAL_PRIORITY_TYPES.has(a.type));
+    const filteredInternal = filterActiveAlerts(filterExpiredWarplanes(alignedInternalAlerts, now))
+      .filter((a) => alignedExternalAlerts.length === 0 || !EXTERNAL_PRIORITY_TYPES.has(a.type));
 
-    const alerts = filterActiveAlerts(filterExpiredWarplanes([...externalAlerts, ...filteredInternal], now)).sort(
+    const alerts = filterActiveAlerts(filterExpiredWarplanes([...alignedExternalAlerts, ...filteredInternal], now)).sort(
       (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
     );
 

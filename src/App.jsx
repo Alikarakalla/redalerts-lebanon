@@ -1223,7 +1223,15 @@ function SidebarPanel({
   );
 }
 
-function FilterSheetButton({ locale, activeType, activeWindow, setActiveType, setActiveWindow, mapPreview, setMapPreview }) {
+function FilterSheetButton({
+  locale,
+  activeType,
+  activeWindow,
+  setActiveType,
+  setActiveWindow,
+  mapPreview,
+  setMapPreview,
+}) {
   return (
     <Sheet>
       <SheetTrigger asChild>

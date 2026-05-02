@@ -14,6 +14,13 @@ import { isLikelyDuplicate } from './dedupe.js';
 import { getChannelMessagesAfterId, getLatestChannelMessages, startTelegramListener } from './telegramListener.js';
 import { trackVisitor, getStats } from './analytics.js';
 import { resolveCoordinates } from './coordinates.js';
+import {
+  buildAdminSessionCookie,
+  buildClearAdminSessionCookie,
+  createAdminSessionToken,
+  isAdminRequestAuthenticated,
+  verifyAdminCredentials,
+} from './adminAuth.js';
 
 const app = express();
 app.set('trust proxy', true);
@@ -320,7 +327,35 @@ app.post('/api/track', async (req, res) => {
   res.json({ tracked: true });
 });
 
+app.get('/api/admin/session', (req, res) => {
+  res.json({ authenticated: isAdminRequestAuthenticated(req) });
+});
+
+app.post('/api/admin/login', (req, res) => {
+  const username = typeof req.body?.username === 'string' ? req.body.username : '';
+  const password = typeof req.body?.password === 'string' ? req.body.password : '';
+
+  if (!verifyAdminCredentials(username, password)) {
+    res.status(401).json({ ok: false, error: 'Invalid username or password.' });
+    return;
+  }
+
+  const token = createAdminSessionToken();
+  res.setHeader('Set-Cookie', buildAdminSessionCookie(token));
+  res.json({ ok: true });
+});
+
+app.post('/api/admin/logout', (_req, res) => {
+  res.setHeader('Set-Cookie', buildClearAdminSessionCookie());
+  res.json({ ok: true });
+});
+
 app.get('/api/stats', async (req, res) => {
+  if (!isAdminRequestAuthenticated(req)) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
   res.json(await getStats());
 });
 

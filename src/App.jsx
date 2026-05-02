@@ -23,6 +23,7 @@ import {
 import MapComponent from './components/MapComponent';
 import RedEdgeGlow from './components/shared/RedEdgeGlow';
 import WarningToast from './components/shared/WarningToast';
+import AdminPage from './components/AdminPage';
 
 const LEBANON_CENTER = [33.8547, 35.8623];
 const ACTIVE_EVENT_TYPES = ['drone', 'warplane', 'airstrike', 'carAttack', 'artillery', 'missile', 'explosion', 'warning'];
@@ -1763,7 +1764,7 @@ function TimelinePlayback({
   );
 }
 
-function App() {
+function MainApp() {
   const { events, status, incomingAlert, clearIncomingAlert } = useStrikeData();
   const [locale, setLocale] = useState('ar');
   const [mapPreview, setMapPreview] = useState(() => {
@@ -2211,6 +2212,18 @@ function App() {
     </div>
     </RedEdgeGlow>
   );
+}
+
+function App() {
+  const isAdminRoute = typeof window !== 'undefined'
+    && window.location.pathname.replace(/\/+$/u, '') === '/admin';
+  const [locale, setLocale] = useState('ar');
+
+  if (isAdminRoute) {
+    return <AdminPage locale={locale} setLocale={setLocale} />;
+  }
+
+  return <MainApp />;
 }
 
 export default App;

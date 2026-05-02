@@ -40,6 +40,9 @@ export const config = {
   supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
   supabaseAlertsTable: process.env.SUPABASE_ALERTS_TABLE || 'alerts',
   supabaseAnalyticsTable: process.env.SUPABASE_ANALYTICS_TABLE || 'analytics_snapshots',
+  adminUsername: process.env.ADMIN_USERNAME || 'alikarakalla99',
+  adminPassword: process.env.ADMIN_PASSWORD || 'Qwertyuasdf123-@',
+  adminSessionSecret: process.env.ADMIN_SESSION_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || 'redalerts-admin-session-secret',
 };
 
 export function hasTelegramConfig() {

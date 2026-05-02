@@ -25,7 +25,10 @@ import {
 const app = express();
 app.set('trust proxy', true);
 
-app.use(cors());
+app.use(cors({
+  origin: true,
+  credentials: true,
+}));
 app.use(express.json());
 
 const ACTIVE_ALERT_TYPES = new Set(config.activeAlertTypes);

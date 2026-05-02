@@ -240,7 +240,9 @@ export default function AdminPage({ locale }) {
   async function loadStats() {
     setLoadingStats(true);
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || ''}/api/stats`);
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || ''}/api/stats`, {
+        credentials: 'include',
+      });
       if (response.status === 401) {
         setAuthenticated(false);
         setStats(null);
@@ -266,7 +268,9 @@ export default function AdminPage({ locale }) {
 
     async function checkSession() {
       try {
-        const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || ''}/api/admin/session`);
+        const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || ''}/api/admin/session`, {
+          credentials: 'include',
+        });
         const payload = await response.json();
         if (!active) {
           return;
@@ -303,6 +307,7 @@ export default function AdminPage({ locale }) {
     try {
       const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || ''}/api/admin/login`, {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
         },
@@ -329,6 +334,7 @@ export default function AdminPage({ locale }) {
     try {
       await fetch(`${import.meta.env.VITE_API_BASE_URL || ''}/api/admin/logout`, {
         method: 'POST',
+        credentials: 'include',
       });
     } catch (logoutError) {
       console.error('Failed to logout', logoutError);

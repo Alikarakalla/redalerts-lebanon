@@ -341,8 +341,9 @@ function getEventMarkerSymbol(type) {
   return '<circle cx="16" cy="16" r="9" /><path class="event-marker__symbol-cutout" d="M15 8h2v10h-2zM15 21h2v3h-2z" />';
 }
 
-const eventIcon = (type, color, opacity, count, radius, isFresh, zoomLevel, coveragePixelRadius = 32) => {
+const eventIcon = (type, color, opacity, count, radius, isFresh, zoomLevel, coveragePixelRadius = 32, mapPreview = 'modern') => {
   const isZoomedOut = zoomLevel < 11;
+  const useClassicPreview = mapPreview === 'classic';
 
   if (type === 'drone') {
     const size = 64;
@@ -415,7 +416,7 @@ const eventIcon = (type, color, opacity, count, radius, isFresh, zoomLevel, cove
     });
   }
 
-  if (type === 'airstrike') {
+  if (!useClassicPreview && type === 'airstrike') {
     const size = isZoomedOut ? 14 : 50;
     const html = `
       <div class="event-marker event-marker--airstrike ${isZoomedOut ? 'event-marker--zoomed-out' : ''}" style="--event-color:${color};width:${size}px;height:${size}px;">
@@ -446,7 +447,7 @@ const eventIcon = (type, color, opacity, count, radius, isFresh, zoomLevel, cove
     });
   }
 
-  if (type === 'explosion') {
+  if (!useClassicPreview && type === 'explosion') {
     const size = isZoomedOut ? 14 : 44;
     const html = `
       <div class="event-marker event-marker--explosion ${isZoomedOut ? 'event-marker--zoomed-out' : ''}" style="--event-color:${color};width:${size}px;height:${size}px;">
@@ -479,7 +480,7 @@ const eventIcon = (type, color, opacity, count, radius, isFresh, zoomLevel, cove
     });
   }
 
-  if (type === 'artillery') {
+  if (!useClassicPreview && type === 'artillery') {
     const size = isZoomedOut ? 14 : 44;
     const html = `
       <div class="event-marker event-marker--artillery ${isZoomedOut ? 'event-marker--zoomed-out' : ''}" style="--event-color:${color};width:${size}px;height:${size}px;">
@@ -509,7 +510,7 @@ const eventIcon = (type, color, opacity, count, radius, isFresh, zoomLevel, cove
     });
   }
 
-  if (type === 'carAttack') {
+  if (!useClassicPreview && type === 'carAttack') {
     const size = isZoomedOut ? 14 : 56;
     const html = `
       <div class="event-marker event-marker--car-attack ${isZoomedOut ? 'event-marker--zoomed-out' : ''}" style="--event-color:${color};width:${size}px;height:${size}px;">
@@ -572,8 +573,8 @@ const eventIcon = (type, color, opacity, count, radius, isFresh, zoomLevel, cove
   return L.divIcon({ html, className: 'custom-leaflet-marker custom-leaflet-marker--event', iconSize: [size, size], iconAnchor: [size / 2, size / 2] });
 };
 
-const customIcon = (type, color, opacity, count, radius, isFresh, zoomLevel, coveragePixelRadius) => {
-  if (type in TYPE_STYLES) return eventIcon(type, color, opacity, count, radius, isFresh, zoomLevel, coveragePixelRadius);
+const customIcon = (type, color, opacity, count, radius, isFresh, zoomLevel, coveragePixelRadius, mapPreview) => {
+  if (type in TYPE_STYLES) return eventIcon(type, color, opacity, count, radius, isFresh, zoomLevel, coveragePixelRadius, mapPreview);
   const html = `
     <div style="position:relative;width:100%;height:100%;display:flex;align-items:center;justify-content:center;">
        ${isFresh ? `<div style="position:absolute;inset:-6px;border-radius:50%;border:1px solid ${color};animation:ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>` : ''}
@@ -584,7 +585,7 @@ const customIcon = (type, color, opacity, count, radius, isFresh, zoomLevel, cov
   return L.divIcon({ html, className: 'custom-leaflet-marker', iconSize: [24, 24], iconAnchor: [12, 12] });
 };
 
-const MapMarker = React.memo(({ incident, locale, zoomLevel, map }) => {
+const MapMarker = React.memo(({ incident, locale, zoomLevel, map, mapPreview }) => {
   const ageBucket = getAgeBucket(incident.timestamp);
   const style = getMarkerStyle(incident.type, incident.timestamp);
   const radius = getMarkerRadius(incident.severity, incident.count, zoomLevel);
@@ -592,8 +593,8 @@ const MapMarker = React.memo(({ incident, locale, zoomLevel, map }) => {
   const isFresh = ageBucket === 'fresh';
   const displayCoverageRadiusMeters = coverageRadiusMeters;
   const coveragePixelRadius = getCoverageRadiusPixels(map, incident.lat, incident.lng, displayCoverageRadiusMeters);
-  const icon = useMemo(() => customIcon(incident.type, style.base, style.fillOpacity + 0.3, incident.count, radius, isFresh, zoomLevel, coveragePixelRadius), 
-    [incident.type, style.base, style.fillOpacity, incident.count, radius, isFresh, zoomLevel, coveragePixelRadius]);
+  const icon = useMemo(() => customIcon(incident.type, style.base, style.fillOpacity + 0.3, incident.count, radius, isFresh, zoomLevel, coveragePixelRadius, mapPreview), 
+    [incident.type, style.base, style.fillOpacity, incident.count, radius, isFresh, zoomLevel, coveragePixelRadius, mapPreview]);
   const handleClick = useCallback(() => zoomToCoverageArea(map, incident.lat, incident.lng, coverageRadiusMeters), 
     [map, incident.lat, incident.lng, coverageRadiusMeters]);
   const showCoverage = true;
@@ -618,7 +619,7 @@ const MapMarker = React.memo(({ incident, locale, zoomLevel, map }) => {
     </React.Fragment>
   );
 });
-function MapEvents({ events, focusedEvent, locale }) {
+function MapEvents({ events, focusedEvent, locale, mapPreview }) {
   const map = useMap();
   const [zoomLevel, setZoomLevel] = useState(map.getZoom());
   useEffect(() => {
@@ -652,7 +653,7 @@ function MapEvents({ events, focusedEvent, locale }) {
       zoomToCoverageArea(map, focusedEvent.lat, focusedEvent.lng, radiusMeters);
     }
   }, [focusedEvent, map]);
-  return <>{mapData.map((incident) => <MapMarker key={incident.id} incident={incident} locale={locale} zoomLevel={zoomLevel} map={map} />)}</>;
+  return <>{mapData.map((incident) => <MapMarker key={incident.id} incident={incident} locale={locale} zoomLevel={zoomLevel} map={map} mapPreview={mapPreview} />)}</>;
 }
 
 function MapPanes() {
@@ -939,7 +940,7 @@ function LebanonOnlyOverlay({ isDarkMode }) {
   );
 }
 
-export default function MapComponent({ events = [], focusedEvent = null, locale = 'ar', activeType = 'all', activeWindow = '24h', replayTime = null, replayStartTime = null }) {
+export default function MapComponent({ events = [], focusedEvent = null, locale = 'ar', activeType = 'all', activeWindow = '24h', mapPreview = 'modern', replayTime = null, replayStartTime = null }) {
   const isDarkMode = useMapDarkMode();
   const isLebanonOnlyMode = getMapModeOverride() === 'lebanon';
   const mapRef = React.useRef(null);
@@ -1016,7 +1017,7 @@ export default function MapComponent({ events = [], focusedEvent = null, locale 
           )}
           {isLebanonOnlyMode ? <LebanonOnlyOverlay isDarkMode={isDarkMode} /> : null}
           <PlaceLabels locale={locale} isDarkMode={isDarkMode} />
-          <MapEvents events={filteredEvents} focusedEvent={focusedEvent} locale={locale} />
+          <MapEvents events={filteredEvents} focusedEvent={focusedEvent} locale={locale} mapPreview={mapPreview} />
         </MapContainer>
       </div>
       <style>{`

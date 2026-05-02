@@ -1223,7 +1223,7 @@ function SidebarPanel({
   );
 }
 
-function FilterSheetButton({ locale, activeType, activeWindow, setActiveType, setActiveWindow }) {
+function FilterSheetButton({ locale, activeType, activeWindow, setActiveType, setActiveWindow, mapPreview, setMapPreview }) {
   return (
     <Sheet>
       <SheetTrigger asChild>
@@ -1245,6 +1245,35 @@ function FilterSheetButton({ locale, activeType, activeWindow, setActiveType, se
           </SheetDescription>
         </SheetHeader>
         <div className="flex flex-col gap-5 px-4 pb-6">
+          <div>
+            <p className="mb-3 text-[11px] font-medium uppercase tracking-[0.2em] text-slate-500">
+              {locale === 'ar' ? 'معاينة الخريطة' : 'Map Preview'}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {[
+                { id: 'modern', label: locale === 'ar' ? 'الجديدة' : 'Modern' },
+                { id: 'classic', label: locale === 'ar' ? 'القديمة' : 'Classic' },
+              ].map((option) => {
+                const isActive = mapPreview === option.id;
+
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    onClick={() => setMapPreview(option.id)}
+                    className={`rounded-full border px-3 py-2 text-xs font-medium transition ${
+                      isActive
+                        ? 'border-white/18 bg-white/12 text-white'
+                        : 'border-white/8 bg-white/[0.03] text-slate-400 hover:bg-white/[0.07] hover:text-slate-200'
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           <div>
             <p className="mb-3 text-[11px] font-medium uppercase tracking-[0.2em] text-slate-500">
               {locale === 'ar' ? '\u0646\u0648\u0639 \u0627\u0644\u062d\u062f\u062b' : 'Event Type'}
@@ -1729,6 +1758,16 @@ function TimelinePlayback({
 function App() {
   const { events, status, incomingAlert, clearIncomingAlert } = useStrikeData();
   const [locale, setLocale] = useState('ar');
+  const [mapPreview, setMapPreview] = useState(() => {
+    if (typeof window === 'undefined') {
+      return 'modern';
+    }
+
+    const urlPreview = new URLSearchParams(window.location.search).get('mapPreview');
+    const storedPreview = window.localStorage?.getItem('mapPreview');
+    const preview = urlPreview || storedPreview;
+    return preview === 'classic' ? 'classic' : 'modern';
+  });
   const [activeStreamId, setActiveStreamId] = useState(null);
   const [focusedEvent, setFocusedEvent] = useState(null);
   const [activeType, setActiveType] = useState('all');
@@ -1843,6 +1882,10 @@ function App() {
     clearIncomingAlert();
   }, [incomingAlert, locale, clearIncomingAlert]);
 
+  useEffect(() => {
+    window.localStorage?.setItem('mapPreview', mapPreview);
+  }, [mapPreview]);
+
   return (
     <RedEdgeGlow
       intensity={warningToastState.open ? 0.72 : 0}
@@ -1863,6 +1906,8 @@ function App() {
           activeWindow={activeWindow}
           setActiveType={setActiveType}
           setActiveWindow={setActiveWindow}
+          mapPreview={mapPreview}
+          setMapPreview={setMapPreview}
         />
       </div>
 
@@ -2117,6 +2162,7 @@ function App() {
             locale={locale}
             activeType={activeType}
             activeWindow={activeWindow}
+            mapPreview={mapPreview}
             replayTime={timelineEnabled ? replayTime : null}
             replayStartTime={timelineEnabled ? replayStartTime : null}
           />
